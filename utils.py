@@ -1,6 +1,6 @@
 from all_packages import *
+from src.datasets.dataset import IterDataset
 from src.models import *
-from utils_dataset.dataset import DataLoader, IterDataset
 
 
 def log_hparams(trainer, hparams):
@@ -11,7 +11,7 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     # configurations for data
-    parser.add_argument("--data_path", type=str, default="./prepro_data")
+    parser.add_argument("--data_path", type=str, default="code/prepro_data")
 
     parser.add_argument("--superpod", action="store_true")
     parser.add_argument("--wandb", action="store_true")
@@ -85,7 +85,9 @@ def get_args():
     parser.add_argument(
         "--num_epoch", type=int, default=MAX_EPOCH, help="Number of total training epochs."
     )
-    parser.add_argument("--batch_size", type=int, default=BATCH_SIZE, help="Training batch size.")
+    parser.add_argument(
+        "--batch_size", "-b", type=int, default=BATCH_SIZE, help="Training batch size."
+    )
     parser.add_argument("--max_grad_norm", type=float, default=5.0, help="Gradient clipping.")
     parser.add_argument("--log_step", type=int, default=30, help="Print log every k steps.")
     parser.add_argument("--log", type=str, default="logs.txt", help="Write training log to file.")
@@ -162,7 +164,7 @@ def get_trainer(args, hparams):
         max_epochs=hparams["max_epochs"],
         strategy="ddp" if len(args.gpus) > 1 else None,
         callbacks=[callback_ckpt, callback_tqdm, callback_lrmornitor],
-        logger=logger_wandb if args.wandb else logger_tboard,
+        logger=logger_wandb if args.wandb is True else logger_tboard,
         # log_every_n_steps=5,
     )
 
@@ -188,7 +190,15 @@ def get_loaders(args):
     dataset_train.load_data()
     dataset_test.load_data()
 
-    dataloader_train = DataLoader(dataset_train, batch_size=None, batch_sampler=None)
-    dataloader_test = DataLoader(dataset_test, batch_size=None, batch_sampler=None, shuffle=False)
+    dataloader_train = DataLoader(
+        dataset_train, batch_size=1, batch_sampler=None, collate_fn=lambda batch: batch
+    )
+    dataloader_test = DataLoader(
+        dataset_test,
+        batch_size=1,
+        batch_sampler=None,
+        shuffle=False,
+        collate_fn=lambda batch: batch,
+    )
 
     return dataloader_train, dataloader_test

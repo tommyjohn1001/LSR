@@ -26,15 +26,6 @@ if __name__ == "__main__":
     ## Log hyperparameters
     log_hparams(trainer, hparams)
 
-    for item in val_loader:
-        # fmt: off
-        import ipdb; ipdb.set_trace()
-        # fmt: on
-
-        print(item)
-
-        break
-
     ## Start training
     trainer.fit(
         litmodel, train_dataloaders=train_loader, val_dataloaders=val_loader, ckpt_path=args.ckpt

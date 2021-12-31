@@ -1,4 +1,3 @@
-from collections import defaultdict
 from operator import add
 
 from all_packages import *
@@ -21,6 +20,16 @@ class IterDataset(IterableDataset):
         self.data_node_position_sent = None
         self.data_node_sent_num = None
         self.data_node_num = None
+
+        self.file = None
+        self.data_entity_position = None
+        self.data_len = None
+        self.data_seg = None
+        self.data_sdp_position = None
+        self.data_sdp_num = None
+        self.order = None
+
+        self.is_train = False
 
         self.n_batches = 0
 
@@ -63,7 +72,8 @@ class IterDataset(IterableDataset):
     def load_data(self):
         logger.info(f"Load dataset: {self.prefix}")
 
-        self.rel2id = json.load(open(os.path.join(self.data_path, "rel2id.json")))
+        with open(os.path.join(self.data_path, "rel2id.json")) as f:
+            self.rel2id = json.load(f)
         self.id2rel = {v: k for k, v in self.rel2id.items()}
 
         self.data_word = np.load(os.path.join(self.data_path, self.prefix + "_word.npy"))
@@ -88,7 +98,8 @@ class IterDataset(IterableDataset):
         self.data_entity_position = np.load(
             os.path.join(self.data_path, self.prefix + "_entity_position.npy")
         )
-        self.file = json.load(open(os.path.join(self.data_path, self.prefix + ".json")))
+        with open(os.path.join(self.data_path, self.prefix + ".json")) as f:
+            self.file = json.load(f)
         self.data_seg = np.load(os.path.join(self.data_path, self.prefix + "_seg.npy"))
         self.data_len = self.data_word.shape[0]
 
@@ -104,12 +115,18 @@ class IterDataset(IterableDataset):
             self.n_batches += 1
 
         self.order = list(range(self.data_len))
+
+        self.is_train = "train" in self.prefix
+
         if self.prefix == TEST_PREFIX:
             self.order.sort(key=lambda x: np.sum(self.data_word[x] > 0), reverse=True)
 
         logger.info(f"Finish reading, no. read documents: {self.data_len}")
 
     def __iter__(self):
+        if self.is_train is True:
+            random.shuffle(self.order)
+
         context_idxs = torch.LongTensor(self.batch_size, self.max_length)
         context_pos = torch.LongTensor(self.batch_size, self.max_length)
         if self.prefix == TEST_PREFIX:
@@ -120,24 +137,34 @@ class IterDataset(IterableDataset):
             t_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length)
         context_ner = torch.LongTensor(self.batch_size, self.max_length)
         context_char_idxs = torch.LongTensor(self.batch_size, self.max_length, self.char_limit)
+        relation_multi_label = torch.Tensor(self.batch_size, self.h_t_limit, self.relation_num)
         relation_mask = torch.Tensor(self.batch_size, self.h_t_limit)
+        relation_label = torch.LongTensor(self.batch_size, self.h_t_limit)
+        pos_idx = torch.LongTensor(self.batch_size, self.max_length)
         ht_pair_pos = torch.LongTensor(self.batch_size, self.h_t_limit)
         context_seg = torch.LongTensor(self.batch_size, self.max_length)
 
         node_position_sent = torch.zeros(
-            self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len
-        ).float()
-
-        node_position = torch.zeros(self.batch_size, self.max_node_num, self.max_length).float()
+            self.batch_size,
+            self.max_sent_num,
+            self.max_node_per_sent,
+            self.max_sent_len,
+            dtype=torch.float,
+        )
+        node_position = torch.zeros(
+            self.batch_size, self.max_node_num, self.max_length, dtype=torch.float
+        )
         entity_position = torch.zeros(
-            self.batch_size, self.max_entity_num, self.max_length
-        ).float()
-        node_num = torch.zeros(self.batch_size, 1).long()
+            self.batch_size, self.max_entity_num, self.max_length, dtype=torch.float
+        )
+        node_num = torch.zeros(self.batch_size, 1, dtype=torch.long)
 
-        node_sent_num = torch.zeros(self.batch_size, self.max_sent_num).float()
+        node_sent_num = torch.zeros(self.batch_size, self.max_sent_num, dtype=torch.float)
 
-        sdp_position = torch.zeros(self.batch_size, self.max_entity_num, self.max_length).float()
-        sdp_num = torch.zeros(self.batch_size, 1).long()
+        sdp_position = torch.zeros(
+            self.batch_size, self.max_entity_num, self.max_length, dtype=torch.float
+        )
+        sdp_num = torch.zeros(self.batch_size, 1, dtype=torch.long)
 
         for b in range(self.n_batches):
             entity_num = []
@@ -148,6 +175,13 @@ class IterDataset(IterableDataset):
             start_id = b * self.batch_size
             cur_bsz = min(self.batch_size, self.data_len - start_id)
             cur_batch = list(self.order[start_id : start_id + cur_bsz])
+            cur_batch.sort(key=lambda x: np.sum(self.data_word[x] > 0), reverse=True)
+
+            if self.is_train is True:
+                for mapping in [h_mapping, t_mapping]:
+                    mapping.zero_()
+
+                relation_label.fill_(IGNORE_INDEX)
 
             for mapping in [h_mapping, t_mapping, relation_mask]:
                 mapping.zero_()
@@ -155,8 +189,6 @@ class IterDataset(IterableDataset):
             ht_pair_pos.zero_()
 
             max_h_t_cnt = 1
-
-            cur_batch.sort(key=lambda x: np.sum(self.data_word[x] > 0), reverse=True)
 
             labels = []
 
@@ -202,46 +234,122 @@ class IterDataset(IterableDataset):
                     sdp_no_trucation = self.max_entity_num
                 sdp_nums.append(sdp_no_trucation)
 
-                L = len(ins["vertexSet"])
-                titles.append(ins["title"])
+                if self.is_train is True:
+                    for j in range(self.max_length):
+                        if self.data_word[index, j] == 0:
+                            break
+                        pos_idx[i, j] = j + 1
 
-                vertexSets.append(ins["vertexSet"])
+                    train_tripe = list(idx2label.keys())
+                    for j, (h_idx, t_idx) in enumerate(train_tripe):
+                        hlist = ins["vertexSet"][h_idx]
+                        tlist = ins["vertexSet"][t_idx]
 
-                j = 0
-                for h_idx in range(L):
-                    for t_idx in range(L):
-                        if h_idx != t_idx:
-                            hlist = ins["vertexSet"][h_idx]
-                            tlist = ins["vertexSet"][t_idx]
+                        for h in hlist:
+                            h_mapping[i, j, h["pos"][0] : h["pos"][1]] = (
+                                1.0 / len(hlist) / (h["pos"][1] - h["pos"][0])
+                            )
 
-                            for h in hlist:
-                                h_mapping[i, j, h["pos"][0] : h["pos"][1]] = (
-                                    1.0 / len(hlist) / (h["pos"][1] - h["pos"][0])
-                                )
-                            for t in tlist:
-                                t_mapping[i, j, t["pos"][0] : t["pos"][1]] = (
-                                    1.0 / len(tlist) / (t["pos"][1] - t["pos"][0])
-                                )
+                        for t in tlist:
+                            t_mapping[i, j, t["pos"][0] : t["pos"][1]] = (
+                                1.0 / len(tlist) / (t["pos"][1] - t["pos"][0])
+                            )
 
-                            relation_mask[i, j] = 1
+                        label = idx2label[(h_idx, t_idx)]
 
-                            delta_dis = hlist[0]["pos"][0] - tlist[0]["pos"][0]
+                        delta_dis = hlist[0]["pos"][0] - tlist[0]["pos"][0]
 
-                            if delta_dis < 0:
-                                ht_pair_pos[i, j] = -int(self.dis2idx[-delta_dis])
-                            else:
-                                ht_pair_pos[i, j] = int(self.dis2idx[delta_dis])
-                            j += 1
+                        if abs(delta_dis) >= self.max_length:  # for gda
+                            continue
 
-                max_h_t_cnt = max(max_h_t_cnt, j)
-                label_set = {}
-                for label in ins["labels"]:
-                    label_set[(label["h"], label["t"], label["r"])] = label["in" + TRAIN_PREFIX]
+                        if delta_dis < 0:
+                            ht_pair_pos[i, j] = -int(self.dis2idx[-delta_dis])
+                        else:
+                            ht_pair_pos[i, j] = int(self.dis2idx[delta_dis])
 
-                labels.append(label_set)
+                        for r in label:
+                            relation_multi_label[i, j, r] = 1
 
-                L_vertex.append(L)
-                indexes.append(index)
+                        relation_mask[i, j] = 1
+                        rt = np.random.randint(len(label))
+                        relation_label[i, j] = label[rt]
+
+                    lower_bound = len(ins["na_triple"])
+
+                    for j, (h_idx, t_idx) in enumerate(
+                        ins["na_triple"][:lower_bound], len(train_tripe)
+                    ):
+                        hlist = ins["vertexSet"][h_idx]
+                        tlist = ins["vertexSet"][t_idx]
+
+                        for h in hlist:
+                            h_mapping[i, j, h["pos"][0] : h["pos"][1]] = (
+                                1.0 / len(hlist) / (h["pos"][1] - h["pos"][0])
+                            )
+
+                        for t in tlist:
+                            t_mapping[i, j, t["pos"][0] : t["pos"][1]] = (
+                                1.0 / len(tlist) / (t["pos"][1] - t["pos"][0])
+                            )
+
+                        relation_multi_label[i, j, 0] = 1
+                        relation_label[i, j] = 0
+                        relation_mask[i, j] = 1
+                        delta_dis = hlist[0]["pos"][0] - tlist[0]["pos"][0]
+
+                        if abs(delta_dis) >= self.max_length:  # for gda
+                            continue
+
+                        if delta_dis < 0:
+                            ht_pair_pos[i, j] = -int(self.dis2idx[-delta_dis])
+                        else:
+                            ht_pair_pos[i, j] = int(self.dis2idx[delta_dis])
+
+                    max_h_t_cnt = max(max_h_t_cnt, len(train_tripe) + lower_bound)
+                else:
+
+                    L = len(ins["vertexSet"])
+                    titles.append(ins["title"])
+
+                    vertexSets.append(ins["vertexSet"])
+
+                    j = 0
+                    for h_idx in range(L):
+                        for t_idx in range(L):
+                            if h_idx != t_idx:
+                                hlist = ins["vertexSet"][h_idx]
+                                tlist = ins["vertexSet"][t_idx]
+
+                                for h in hlist:
+                                    h_mapping[i, j, h["pos"][0] : h["pos"][1]] = (
+                                        1.0 / len(hlist) / (h["pos"][1] - h["pos"][0])
+                                    )
+                                for t in tlist:
+                                    t_mapping[i, j, t["pos"][0] : t["pos"][1]] = (
+                                        1.0 / len(tlist) / (t["pos"][1] - t["pos"][0])
+                                    )
+
+                                relation_mask[i, j] = 1
+
+                                delta_dis = hlist[0]["pos"][0] - tlist[0]["pos"][0]
+
+                                if delta_dis < 0:
+                                    ht_pair_pos[i, j] = -int(self.dis2idx[-delta_dis])
+                                else:
+                                    ht_pair_pos[i, j] = int(self.dis2idx[delta_dis])
+                                j += 1
+
+                    max_h_t_cnt = max(max_h_t_cnt, j)
+                    label_set = {}
+                    for label in ins["labels"]:
+                        label_set[(label["h"], label["t"], label["r"])] = label[
+                            "in" + TRAIN_PREFIX
+                        ]
+
+                    labels.append(label_set)
+
+                    L_vertex.append(L)
+                    indexes.append(index)
 
             input_lengths = (context_idxs[:cur_bsz] > 0).long().sum(dim=1)
             max_c_len = int(input_lengths.max())
@@ -266,8 +374,11 @@ class IterDataset(IterableDataset):
                 "labels": labels,
                 "L_vertex": L_vertex,
                 "input_lengths": input_lengths,
+                "pos_idx": pos_idx[:cur_bsz, :max_c_len].contiguous(),
                 "context_ner": context_ner[:cur_bsz, :max_c_len].contiguous(),
                 "context_char_idxs": context_char_idxs[:cur_bsz, :max_c_len].contiguous(),
+                "relation_label": relation_label[:cur_bsz, :max_h_t_cnt].contiguous(),
+                "relation_multi_label": relation_multi_label[:cur_bsz, :max_h_t_cnt],
                 "relation_mask": relation_mask[:cur_bsz, :max_h_t_cnt],
                 "titles": titles,
                 "ht_pair_pos": ht_pair_pos[:cur_bsz, :max_h_t_cnt],
@@ -281,7 +392,7 @@ class IterDataset(IterableDataset):
                 "indexes": indexes,
                 "all_node_num": all_node_num,
                 "entity_num": entity_num,
-                "sent_num": sentence_num,
+                "sentence_num": sentence_num,
                 "sdp_position": sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                 "sdp_num": sdp_nums,
                 "vertexsets": vertexSets,

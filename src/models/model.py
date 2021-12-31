@@ -1,11 +1,13 @@
-import sklearn
 import torch
 from all_packages import *
 from pytorch_transformers import BertModel
+from sklearn import metrics
 from src.models.layers import *
 from src.utils import torch_utils
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim.lr_scheduler import ExponentialLR
+
+from .utils import Accuracy
 
 
 class LSR(nn.Module):
@@ -30,6 +32,9 @@ class LSR(nn.Module):
         self.reasoner_layer_first = args.reasoner_layer_first
         self.reasoner_layer_second = args.reasoner_layer_second
         self.use_reasoning_block = args.use_reasoning_block
+        self.relation_num = relation_num
+        self.rel2id = json.load(open(os.path.join(args.data_path, "rel2id.json")))
+        self.id2rel = {v: k for k, v in self.rel2id.items()}
 
         ## Init layers
 
@@ -165,7 +170,7 @@ class LSR(nn.Module):
         :return:
         """
 
-        """===========STEP1: Encode the document============="""
+        # ==========STEP1: Encode the document============
         sent_emb = torch.cat(
             [self.word_emb(context_idxs), self.coref_embed(pos), self.ner_emb(context_ner)], dim=-1
         )
@@ -174,18 +179,18 @@ class LSR(nn.Module):
         max_doc_len = docs_rep.shape[1]
         context_output = self.dropout_rate(torch.relu(self.linear_re(docs_rep)))
 
-        """===========STEP2: Extract all node reps of a document graph============="""
-        """extract Mention node representations"""
+        # ==========STEP2: Extract all node reps of a document graph============
+        # extract Mention node representations"""
         mention_num_list = torch.sum(mention_node_sent_num, dim=1).long().tolist()
         max_mention_num = max(mention_num_list)
         mentions_rep = torch.bmm(
             mention_node_position[:, :max_mention_num, :max_doc_len], context_output
         )  # mentions rep
-        """extract MDP(meta dependency paths) node representations"""
+        # extract MDP(meta dependency paths) node representations"""
         sdp_num_list = sdp_num_list.long().tolist()
         max_sdp_num = max(sdp_num_list)
         sdp_rep = torch.bmm(sdp_pos[:, :max_sdp_num, :max_doc_len], context_output)
-        """extract Entity node representations"""
+        # extract Entity node representations"""
         entity_rep = torch.bmm(entity_position[:, :, :max_doc_len], context_output)
         """concatenate all nodes of an instance"""
         gcn_inputs = []
@@ -203,7 +208,7 @@ class LSR(nn.Module):
         gcn_inputs = pad_sequence(gcn_inputs).permute(1, 0, 2)
         output = gcn_inputs
 
-        """===========STEP3: Induce the Latent Structure============="""
+        # ==========STEP3: Induce the Latent Structure============
         if self.use_reasoning_block:
             for i in range(len(self.reasoner)):
                 output = self.reasoner[i](output)
@@ -254,6 +259,9 @@ class LSR_Bert(nn.Module):
         self.reasoner_layer_first = args.reasoner_layer_first
         self.reasoner_layer_second = args.reasoner_layer_second
         self.use_reasoning_block = args.use_reasoning_block
+        self.relation_num = relation_num
+        self.rel2id = json.load(open(os.path.join(args.data_path, "rel2id.json")))
+        self.id2rel = {v: k for k, v in self.rel2id.items()}
 
         ## Init layers
         self.bert = BertModel.from_pretrained("bert-base-uncased")
@@ -384,7 +392,7 @@ class LSR_Bert(nn.Module):
         :return:
         """
 
-        """===========STEP1: Encode the document============="""
+        # ==========STEP1: Encode the document============
         context_output = self.bert(context_idxs, attention_mask=context_masks)[0]
         context_output = [
             layer[starts.nonzero().squeeze(1)]
@@ -399,18 +407,18 @@ class LSR_Bert(nn.Module):
 
         # max_doc_len = docs_rep.shape[1]
 
-        """===========STEP2: Extract all node reps of a document graph============="""
-        """extract Mention node representations"""
+        # ==========STEP2: Extract all node reps of a document graph============
+        # extract Mention node representations"""
         mention_num_list = torch.sum(mention_node_sent_num, dim=1).long().tolist()
         max_mention_num = max(mention_num_list)
         mentions_rep = torch.bmm(
             mention_node_position[:, :max_mention_num, :max_doc_len], context_output
         )  # mentions rep
-        """extract MDP(meta dependency paths) node representations"""
+        # extract MDP(meta dependency paths) node representations"""
         sdp_num_list = sdp_num_list.long().tolist()
         max_sdp_num = max(sdp_num_list)
         sdp_rep = torch.bmm(sdp_pos[:, :max_sdp_num, :max_doc_len], context_output)
-        """extract Entity node representations"""
+        # extract Entity node representations"""
         entity_rep = torch.bmm(entity_position[:, :, :max_doc_len], context_output)
         """concatenate all nodes of an instance"""
         gcn_inputs = []
@@ -428,7 +436,7 @@ class LSR_Bert(nn.Module):
         gcn_inputs = pad_sequence(gcn_inputs).permute(1, 0, 2)
         output = gcn_inputs
 
-        """===========STEP3: Induce the Latent Structure============="""
+        # ==========STEP3: Induce the Latent Structure============
         if self.use_reasoning_block:
             for i in range(len(self.reasoner)):
                 output = self.reasoner[i](output)
@@ -469,12 +477,17 @@ class LSRLitModel(LightningModule):
         self.model = model
 
         self.criterion = nn.BCEWithLogitsLoss(reduction="none")
+        self.acc_NA = Accuracy()
+        self.acc_not_NA = Accuracy()
+        self.acc_total = Accuracy()
 
         self.automatic_optimization = False
 
         self.lr = hps["lr"]
 
     def transfer_batch_to_device(self, batch, device: torch.device, dataloader_idx: int):
+        batch = batch[0]
+
         context_idxs = batch["context_idxs"].to(device)
         context_pos = batch["context_pos"].to(device)
         h_mapping = batch["h_mapping"].to(device)
@@ -485,7 +498,6 @@ class LSRLitModel(LightningModule):
         entity_position = batch["entity_position"].to(device)
         node_sent_num = batch["node_sent_num"].to(device)
         all_node_num = batch["all_node_num"].to(device)
-        relation_multi_label = batch["relation_multi_label"].to(device)
         sdp_pos = batch["sdp_position"].to(device)
 
         ht_pair_pos = batch["ht_pair_pos"]
@@ -495,8 +507,21 @@ class LSRLitModel(LightningModule):
         dis_h_2_t = dis_h_2_t.to(device)
         dis_t_2_h = dis_t_2_h.to(device)
 
-        sdp_num = torch.Tensor(batch["sdp_num"], device=device)
-        entity_num = torch.Tensor(batch["entity_num"], device=device)
+        sdp_num = torch.tensor(batch["sdp_num"], device=device)
+        entity_num = torch.tensor(batch["entity_num"], device=device)
+
+        if "relation_multi_label" in batch:
+            relation_multi_label = batch["relation_multi_label"].to(device)
+        else:
+            relation_multi_label = None
+        if "relation_label" in batch:
+            relation_label = batch["relation_label"]
+        else:
+            relation_label = None
+        if "pos_idx" in batch:
+            pos_idx = batch["pos_idx"]
+        else:
+            pos_idx = None
 
         return {
             "context_idxs": context_idxs,
@@ -504,7 +529,7 @@ class LSRLitModel(LightningModule):
             "h_mapping": h_mapping,
             "t_mapping": t_mapping,
             "context_seg": context_seg,
-            "relation_label": batch["relation_label"],
+            "relation_label": relation_label,
             "relation_multi_label": relation_multi_label,
             "relation_mask": relation_mask,
             "input_lengths": batch["input_lengths"],
@@ -516,15 +541,17 @@ class LSRLitModel(LightningModule):
             "entity_position": entity_position,
             "entity_num": entity_num,
             "all_node_num": all_node_num,
-            "pos_idx": batch["pos_idx"],
+            "pos_idx": pos_idx,
             "titles": batch["titles"],
             "indexes": batch["indexes"],
             "L_vertex": batch["L_vertex"],
             "labels": batch["labels"],
             "sent_num": batch["sentence_num"],
-            "sdp_position": sdp_pos,
+            "sdp_pos": sdp_pos,
             "sdp_num": sdp_num,
-            "vertexsets": batch["vertexSets"],
+            "dis_h_2_t": dis_h_2_t,
+            "dis_t_2_h": dis_t_2_h
+            # "vertexsets": batch["vertexSets"],
         }
 
     ####### TRAIN ##########################################################################################
@@ -539,6 +566,8 @@ class LSRLitModel(LightningModule):
         self.best_epoch = 0
 
     def training_step(self, batch, batch_idx):
+        gc.collect()
+
         opt = self.optimizers()
         opt.zero_grad()
 
@@ -616,9 +645,6 @@ class LSRLitModel(LightningModule):
         self.have_label = 0
 
     def validation_step(self, batch, batch_idx):
-        # fmt: off
-        import ipdb; ipdb.set_trace()
-        # fmt: on
 
         predict_re = self.model(
             batch["context_idxs"],
@@ -645,7 +671,7 @@ class LSRLitModel(LightningModule):
         labels = batch["labels"]
         indexes = batch["indexes"]
         titles = batch["titles"]
-        for i in range(len(labels)):
+        for i, _ in enumerate(labels):
             label = labels[i]
             index = indexes[i]
 
@@ -667,7 +693,7 @@ class LSRLitModel(LightningModule):
 
                         flag = False
 
-                        for r in range(1, self.relation_num):
+                        for r in range(1, self.model.relation_num):
                             intrain = False
 
                             if (h_idx, t_idx, r) in label:
@@ -680,7 +706,7 @@ class LSRLitModel(LightningModule):
                                         (h_idx, t_idx, r) in label,
                                         float(predict_re[i, j, r]),
                                         titles[i],
-                                        self.id2rel[r],
+                                        self.model.id2rel[r],
                                         index,
                                         h_idx,
                                         t_idx,
@@ -694,7 +720,7 @@ class LSRLitModel(LightningModule):
                                     (h_idx, t_idx, r) in label,
                                     float(predict_re[i, j, r]),
                                     titles[i],
-                                    self.id2rel[r],
+                                    self.model.id2rel[r],
                                     index,
                                     h_idx,
                                     t_idx,
@@ -719,16 +745,12 @@ class LSRLitModel(LightningModule):
         w = 0
 
         if self.total_recall == 0:
-            total_recall = 1  # for test
-
-        # fmt: off
-        import ipdb; ipdb.set_trace()
-        # fmt: on
+            self.total_recall = 1  # for test
 
         for i, item in enumerate(self.test_result):
             correct += item[0]
             pr_y.append(float(correct) / (i + 1))  # precision
-            pr_x.append(float(correct) / total_recall)  # recall
+            pr_x.append(float(correct) / self.total_recall)  # recall
             if item[1] > input_theta:
                 w = i
 
@@ -742,7 +764,7 @@ class LSRLitModel(LightningModule):
         if input_theta == -1:
             w = f1_pos
 
-        auc = sklearn.metrics.auc(x=pr_x, y=pr_y)
+        auc = metrics.auc(x=pr_x, y=pr_y)
 
         input_theta = theta
         pr_x = []
@@ -752,7 +774,7 @@ class LSRLitModel(LightningModule):
         for i, item in enumerate(self.test_result_ignore):
             correct += item[0]
             pr_y.append(float(correct) / (i + 1))
-            pr_x.append(float(correct) / total_recall)
+            pr_x.append(float(correct) / self.total_recall)
             if item[1] > input_theta:
                 w = i
 
@@ -761,7 +783,7 @@ class LSRLitModel(LightningModule):
         f1_arr = 2 * pr_x * pr_y / (pr_x + pr_y + 1e-20)
         f1_ig = f1_arr.max()
 
-        auc = sklearn.metrics.auc(x=pr_x, y=pr_y)
+        auc = metrics.auc(x=pr_x, y=pr_y)
 
         return f1, f1_ig, auc, pr_x, pr_y
 
@@ -775,10 +797,10 @@ class LSRLitModel(LightningModule):
     def configure_optimizers(self):
 
         optimizer = torch_utils.get_optimizer(
-            self._hparams["optim"], self.parameters(), self.hparams["lr"]
+            self._hparams["optim"], self.parameters(), self._hparams["lr"]
         )
 
-        scheduler = ExponentialLR(optimizer, self.hparams["lr_decay"])
+        scheduler = ExponentialLR(optimizer, self._hparams["lr_decay"])
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
