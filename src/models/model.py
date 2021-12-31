@@ -613,7 +613,7 @@ class LSRLitModel(LightningModule):
                 self.acc_total.add(output[i][j] == label)
 
         ## Logging
-        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         self.manual_backward(loss)
         opt.step()
@@ -807,10 +807,9 @@ class LSRLitModel(LightningModule):
     def configure_gradient_clipping(
         self, optimizer, optimizer_idx, gradient_clip_val, gradient_clip_algorithm
     ):
-        if optimizer_idx == 0:
-            # Lightning will handle the gradient clipping
-            self.clip_gradients(
-                optimizer,
-                gradient_clip_val=self._hparams["gradient_clip_val"],
-                gradient_clip_algorithm=gradient_clip_algorithm,
-            )
+
+        self.clip_gradients(
+            optimizer,
+            gradient_clip_val=gradient_clip_val,
+            gradient_clip_algorithm=gradient_clip_algorithm,
+        )
