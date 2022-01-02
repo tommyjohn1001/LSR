@@ -1,5 +1,5 @@
 from all_packages import *
-from utils import *
+from util import *
 
 dotenv.load_dotenv(override=True)
 
