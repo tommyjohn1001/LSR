@@ -1,0 +1,43 @@
+train time for epoch 196: 1395.4952540397644
+epoch:197, Learning rate:9.994765958206083e-05
+| epoch 197 | step 30150 |  ms/b 18620.54 | train loss 0.083 | NA acc: 1.00 | not NA acc: 0.60  | tot acc: 0.99
+| epoch 197 | step 30200 |  ms/b 4504.55 | train loss 0.082 | NA acc: 1.00 | not NA acc: 0.62  | tot acc: 0.99
+| epoch 197 | step 30250 |  ms/b 4527.31 | train loss 0.083 | NA acc: 1.00 | not NA acc: 0.62  | tot acc: 0.99
+-----------------------------------------------------------------------------------------
+| step   1 | time: 364.36
+total_recall 12275
+ALL   : Theta 0.4109 | F1 0.5442 | Precision 0.5067 | Recall 0.5877 | AUC 0.5442
+Ignore ma_f1 0.4821 | input_theta 0.4109 test_result F1 0.4820 | Precision 0.4304| Recall 0.5477| AUC 0.4430
+| epoch 197 | time: 848.92s
+-----------------------------------------------------------------------------------------
+train time for epoch 197: 1540.1901586055756
+epoch:198, Learning rate:9.994765958206083e-05
+| epoch 198 | step 30300 |  ms/b 21519.78 | train loss 0.083 | NA acc: 1.00 | not NA acc: 0.62  | tot acc: 0.98
+| epoch 198 | step 30350 |  ms/b 4475.42 | train loss 0.083 | NA acc: 1.00 | not NA acc: 0.62  | tot acc: 0.99
+| epoch 198 | step 30400 |  ms/b 4355.95 | train loss 0.083 | NA acc: 1.00 | not NA acc: 0.62  | tot acc: 0.99
+-----------------------------------------------------------------------------------------
+| step   1 | time: 362.73
+total_recall 12275
+ALL   : Theta 0.4111 | F1 0.5433 | Precision 0.5119 | Recall 0.5788 | AUC 0.5437
+Ignore ma_f1 0.4812 | input_theta 0.4111 test_result F1 0.4812 | Precision 0.4348| Recall 0.5386| AUC 0.4423
+| epoch 198 | time: 793.35s
+-----------------------------------------------------------------------------------------
+train time for epoch 198: 1479.1756119728088
+epoch:199, Learning rate:9.994765958206083e-05
+| epoch 199 | step 30450 |  ms/b 20485.37 | train loss 0.082 | NA acc: 1.00 | not NA acc: 0.63  | tot acc: 0.98
+| epoch 199 | step 30500 |  ms/b 4570.10 | train loss 0.081 | NA acc: 1.00 | not NA acc: 0.63  | tot acc: 0.99
+| epoch 199 | step 30550 |  ms/b 4424.32 | train loss 0.082 | NA acc: 1.00 | not NA acc: 0.63  | tot acc: 0.99
+| epoch 199 | step 30600 |  ms/b 4653.43 | train loss 0.083 | NA acc: 1.00 | not NA acc: 0.63  | tot acc: 0.99
+-----------------------------------------------------------------------------------------
+| step   1 | time: 361.49
+total_recall 12275
+ALL   : Theta 0.3719 | F1 0.5424 | Precision 0.5252 | Recall 0.5608 | AUC 0.5423
+Ignore ma_f1 0.4814 | input_theta 0.3719 test_result F1 0.4813 | Precision 0.4473| Recall 0.5209| AUC 0.4413
+| epoch 199 | time: 846.13s
+-----------------------------------------------------------------------------------------
+train time for epoch 199: 1542.0841796398163
+Finish training
+Best epoch = 98 | F1 0.5478790998458862, auc = 0.4460389018058777
+Storing best result...
+Finish storing
+Finished time: 2021-12-30 14:06:07.64836
