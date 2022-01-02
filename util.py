@@ -1,6 +1,10 @@
+from pytorch_lightning import seed_everything
+
 from all_packages import *
 from src.datasets.dataset import IterDataset
 from src.models import *
+
+seed_everything(42, workers=True)
 
 
 def log_hparams(trainer, hparams):
@@ -154,9 +158,9 @@ def get_trainer(args, hparams):
         save_top_k=2,
         save_last=True,
     )
-    callback_tqdm = TQDMProgressBar(refresh_rate=5)
+    callback_tqdm = TQDMProgressBar(refresh_rate=1)
     callback_lrmornitor = LearningRateMonitor(logging_interval="step")
-    logger_tboard = TensorBoardLogger(root_logging, name=name, version=now)
+    logger_tboard = TensorBoardLogger(osp.join(root_logging, "tboard"), name=name)
     logger_wandb = WandbLogger(name, root_logging)
 
     trainer = Trainer(

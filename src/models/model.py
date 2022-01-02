@@ -510,18 +510,15 @@ class LSRLitModel(LightningModule):
         sdp_num = torch.tensor(batch["sdp_num"], device=device)
         entity_num = torch.tensor(batch["entity_num"], device=device)
 
-        if "relation_multi_label" in batch:
-            relation_multi_label = batch["relation_multi_label"].to(device)
-        else:
-            relation_multi_label = None
-        if "relation_label" in batch:
-            relation_label = batch["relation_label"]
-        else:
-            relation_label = None
-        if "pos_idx" in batch:
-            pos_idx = batch["pos_idx"]
-        else:
-            pos_idx = None
+        relation_multi_label = (
+            batch["relation_multi_label"].to(device) if "relation_multi_label" in batch else None
+        )
+        relation_label = batch["relation_label"].to(device) if "relation_label" in batch else None
+        pos_idx = batch["pos_idx"].to(device) if "pos_idx" in batch else None
+        titles = batch["titles"] if "titles" in batch else None
+        indexes = batch["indexes"] if "indexes" in batch else None
+        L_vertex = batch["L_vertex"] if "L_vertex" in batch else None
+        labels = batch["labels"] if "labels" in batch else None
 
         return {
             "context_idxs": context_idxs,
@@ -542,11 +539,11 @@ class LSRLitModel(LightningModule):
             "entity_num": entity_num,
             "all_node_num": all_node_num,
             "pos_idx": pos_idx,
-            "titles": batch["titles"],
-            "indexes": batch["indexes"],
-            "L_vertex": batch["L_vertex"],
-            "labels": batch["labels"],
-            "sent_num": batch["sentence_num"],
+            "titles": titles,
+            "indexes": indexes,
+            "L_vertex": L_vertex,
+            "labels": labels,
+            "sent_num": batch["sent_num"],
             "sdp_pos": sdp_pos,
             "sdp_num": sdp_num,
             "dis_h_2_t": dis_h_2_t,
@@ -795,7 +792,6 @@ class LSRLitModel(LightningModule):
         self.log("val_auc", auc, on_step=False, on_epoch=True)
 
     def configure_optimizers(self):
-
         optimizer = torch_utils.get_optimizer(
             self._hparams["optim"], self.parameters(), self._hparams["lr"]
         )
@@ -811,5 +807,5 @@ class LSRLitModel(LightningModule):
         self.clip_gradients(
             optimizer,
             gradient_clip_val=gradient_clip_val,
-            gradient_clip_algorithm=gradient_clip_algorithm,
+            gradient_clip_algorithm="norm",
         )
