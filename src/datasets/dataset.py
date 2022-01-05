@@ -4,6 +4,11 @@ from all_packages import *
 from torch.utils.data import IterableDataset
 
 
+def load_object(path, ob):
+    with open(path, "rb") as handle:
+        return pickle.load(handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 class IterDataset(IterableDataset):
     def __init__(self, args, prefix) -> None:
         super().__init__()
@@ -81,6 +86,10 @@ class IterDataset(IterableDataset):
         self.data_ner = np.load(os.path.join(self.data_path, self.prefix + "_ner.npy"))
         self.data_char = np.load(os.path.join(self.data_path, self.prefix + "_char.npy"))
 
+        # fmt: off
+        import ipdb; ipdb.set_trace()
+        # fmt: on
+
         self.data_node_position = np.load(
             os.path.join(self.data_path, self.prefix + "_node_position.npy")
         )
@@ -109,6 +118,9 @@ class IterDataset(IterableDataset):
             os.path.join(self.data_path, self.prefix + "_sdp_position.npy")
         )
         self.data_sdp_num = np.load(os.path.join(self.data_path, self.prefix + "_sdp_num.npy"))
+        self.structure_mask = np.load(
+            os.path.join(self.data_path, self.prefix + "_structure_mask.npy")
+        )
 
         self.n_batches = self.data_word.shape[0] // self.batch_size
         if self.data_word.shape[0] % self.batch_size != 0:
@@ -156,6 +168,10 @@ class IterDataset(IterableDataset):
 
         node_sent_num = torch.zeros(self.batch_size, self.max_sent_num).float()
 
+        structure_mask = torch.zeros(
+            self.batch_size, self.max_length, self.max_length, dtype=torch.long
+        )
+
         entity_position = torch.zeros(
             self.batch_size, self.max_entity_num, self.max_length
         ).float()
@@ -193,6 +209,7 @@ class IterDataset(IterableDataset):
                 context_char_idxs[i].copy_(torch.from_numpy(self.data_char[index, :]))
                 context_ner[i].copy_(torch.from_numpy(self.data_ner[index, :]))
                 context_seg[i].copy_(torch.from_numpy(self.data_seg[index, :]))
+                structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 ins = self.file[index]
                 labels = ins["labels"]
@@ -334,6 +351,7 @@ class IterDataset(IterableDataset):
                 "sent_num": sentence_num,
                 "sdp_position": sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                 "sdp_num": sdp_nums,
+                "structure_mask": structure_mask,
             }
 
     def get_test_batch(self):
@@ -346,6 +364,9 @@ class IterDataset(IterableDataset):
         relation_mask = torch.Tensor(self.batch_size, self.h_t_limit)
         ht_pair_pos = torch.LongTensor(self.batch_size, self.h_t_limit)
         context_seg = torch.LongTensor(self.batch_size, self.max_length)
+        structure_mask = torch.zeros(
+            self.batch_size, self.max_length, self.max_length, dtype=torch.long
+        )
 
         node_position_sent = torch.zeros(
             self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len
@@ -398,6 +419,7 @@ class IterDataset(IterableDataset):
                 context_char_idxs[i].copy_(torch.from_numpy(self.data_char[index, :]))
                 context_ner[i].copy_(torch.from_numpy(self.data_ner[index, :]))
                 context_seg[i].copy_(torch.from_numpy(self.data_seg[index, :]))
+                structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 idx2label = defaultdict(list)
                 ins = self.file[index]
@@ -510,6 +532,7 @@ class IterDataset(IterableDataset):
                 "sdp_position": sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                 "sdp_num": sdp_nums,
                 "vertexsets": vertexSets,
+                "structure_mask": structure_mask,
             }
 
     def __iter__(self):

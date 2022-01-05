@@ -38,12 +38,11 @@ class LSR(nn.Module):
 
         ## Init layers
 
-        ## Load GloVe Embedding
+        ## Init embedding layers
         self.word_emb = nn.Embedding(data_word_vec.shape[0], data_word_vec.shape[1])
         self.word_emb.weight.data.copy_(torch.from_numpy(data_word_vec))
         if not args.finetune_emb:
             self.word_emb.weight.requires_grad = False
-
         self.ner_emb = nn.Embedding(13, entity_type_size, padding_idx=0)
         self.coref_embed = nn.Embedding(max_length, coref_size, padding_idx=0)
 
@@ -149,6 +148,7 @@ class LSR(nn.Module):
         entity_num_list,
         sdp_pos,
         sdp_num_list,
+        structure_mask,
     ):
         """
         :param context_idxs: Token IDs
@@ -371,6 +371,7 @@ class LSR_Bert(nn.Module):
         sdp_num_list,
         context_masks,
         context_starts,
+        structure_mask,
     ):
         """
         :param context_idxs: Token IDs
@@ -407,6 +408,9 @@ class LSR_Bert(nn.Module):
 
         # max_doc_len = docs_rep.shape[1]
 
+        # fmt: off
+        import ipdb; ipdb.set_trace()
+        # fmt: on
         # ==========STEP2: Extract all node reps of a document graph============
         # extract Mention node representations"""
         mention_num_list = torch.sum(mention_node_sent_num, dim=1).long().tolist()
@@ -499,6 +503,7 @@ class LSRLitModel(LightningModule):
         node_sent_num = batch["node_sent_num"].to(device)
         all_node_num = batch["all_node_num"].to(device)
         sdp_pos = batch["sdp_position"].to(device)
+        structure_mask = batch["structure_mask"].to(device)
 
         ht_pair_pos = batch["ht_pair_pos"]
         context_seg = batch["context_seg"]
@@ -547,8 +552,9 @@ class LSRLitModel(LightningModule):
             "sdp_pos": sdp_pos,
             "sdp_num": sdp_num,
             "dis_h_2_t": dis_h_2_t,
-            "dis_t_2_h": dis_t_2_h
+            "dis_t_2_h": dis_t_2_h,
             # "vertexsets": batch["vertexSets"],
+            "structure_mask": structure_mask,
         }
 
     ####### TRAIN ##########################################################################################
@@ -585,6 +591,7 @@ class LSRLitModel(LightningModule):
             batch["entity_num"],
             batch["sdp_pos"],
             batch["sdp_num"],
+            batch["structure_mask"],
         )
 
         ## Calculate loss and accuracies
@@ -621,13 +628,13 @@ class LSRLitModel(LightningModule):
 
         # and epoch < self.evaluate_epoch:# and epoch < self.evaluate_epoch:
         if self.current_epoch > self._hparams["decay_epoch"]:
-            if self.optim == "sgd" and self.f1 < self.dev_score_list[-1]:
+            if optimizer == "sgd" and self.f1 < self.dev_score_list[-1]:
                 self.lr *= self._hparams["lr_decay"]
                 for param_group in optimizer.param_groups:
                     param_group["lr"] = self.lr
 
             # epoch < 30:# and f1 < dev_score_list[-1]:
-            if self.optim == "adam" and optimizer.param_groups[0]["lr"] > 1e-4:
+            if optimizer == "adam" and optimizer.param_groups[0]["lr"] > 1e-4:
                 scheduler.step()
 
     ####### VALIDATION ##########################################################################################
@@ -660,6 +667,7 @@ class LSRLitModel(LightningModule):
             batch["entity_num"],
             batch["sdp_pos"],
             batch["sdp_num"],
+            batch["structure_mask"],
         )
 
         predict_re = torch.sigmoid(predict_re)
@@ -805,7 +813,5 @@ class LSRLitModel(LightningModule):
     ):
 
         self.clip_gradients(
-            optimizer,
-            gradient_clip_val=gradient_clip_val,
-            gradient_clip_algorithm="norm",
+            optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm="norm"
         )

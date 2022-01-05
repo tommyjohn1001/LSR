@@ -181,9 +181,10 @@ Temporary Items
 
 
 data/
-prepro_data/
+prepro_data*/
 wandb
 log/
 checkpoint/
 logs
 .vscode/
+tests/
