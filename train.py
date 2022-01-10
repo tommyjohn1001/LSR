@@ -30,7 +30,3 @@ if __name__ == "__main__":
     trainer.fit(
         litmodel, train_dataloaders=train_loader, val_dataloaders=val_loader, ckpt_path=args.ckpt
     )
-
-    ## TODO: Consider if this is needed
-    ## Start testing
-    # final_test_model(path_dir_ckpt, litmodel, trainer, val_loader)

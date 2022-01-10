@@ -15,12 +15,13 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     # configurations for data
-    parser.add_argument("--data_path", type=str, default="code/prepro_data")
+    parser.add_argument("--data_path", type=str, default="prepro_data")
 
     parser.add_argument("--superpod", action="store_true")
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--ckpt", "-c", default=None)
     parser.add_argument("--gpus", "-g", default="0")
+    parser.add_argument("--exp", "-e", type=str, default=None)
 
     parser.add_argument(
         "--model_name",
@@ -149,13 +150,12 @@ def get_trainer(args, hparams):
 
     path_dir_ckpt = osp.join(root_logging, "ckpts", name)
 
-    ## TODO: Check this again
     callback_ckpt = ModelCheckpoint(
         dirpath=path_dir_ckpt,
         monitor="val_f1",
         filename="{epoch}-{val_loss:.3f}",
         mode="max",
-        save_top_k=2,
+        save_top_k=5,
         save_last=True,
     )
     callback_tqdm = TQDMProgressBar(refresh_rate=5)

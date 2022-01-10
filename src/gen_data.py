@@ -8,7 +8,7 @@ nlp = spacy.load("en_core_web_sm")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--in_path", type=str, default="data")
-parser.add_argument("--out_path", type=str, default="prepro_data_test")
+parser.add_argument("--out_path", type=str, default="prepro_data")
 
 args = parser.parse_args()
 in_path = args.in_path

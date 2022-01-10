@@ -188,3 +188,4 @@ checkpoint/
 logs
 .vscode/
 tests/
+slurms/

@@ -80,6 +80,29 @@ class LSR(nn.Module):
                 DynamicReasoner(hidden_size, self.reasoner_layer_second, self.dropout_gcn)
             )
 
+        NUM_DEPENDENCY = 6
+        dependency_embd = [
+            nn.Parameter(
+                nn.init.xavier_uniform_(
+                    torch.empty(1, 2 * hidden_size, requires_grad=False if i == 0 else True)
+                )
+            )
+            for i in range(NUM_DEPENDENCY)
+        ]
+        self.dependency_embd = torch.cat(dependency_embd)
+
+    def get_relation_embd(self, structure_mask):
+
+        self.dependency_embd = self.dependency_embd.to(structure_mask.device)
+
+        relations = F.one_hot(structure_mask, num_classes=6).float()
+        # [bz, max_len, max_len, 6]
+
+        relation_embd = torch.einsum("bxyn,nd->bxyd", relations, self.dependency_embd)
+        # [bz, max_len, max_len, 2*hid_size]
+
+        return relation_embd
+
     def doc_encoder(self, input_sent, context_seg):
         """
         :param sent: sent emb
@@ -179,6 +202,27 @@ class LSR(nn.Module):
         max_doc_len = docs_rep.shape[1]
         context_output = self.dropout_rate(torch.relu(self.linear_re(docs_rep)))
 
+        ## NOTE: Enable this to use structure mask
+        # ==========STEP1.1: Encode structure into context embedding============
+        structure_mask = self.get_relation_embd(structure_mask)
+        # [bz, max_len, max_len, 2*hid_size]
+
+        context_output1 = context_output.unsqueeze(1).repeat(1, max_doc_len, 1, 1)
+        context_output2 = context_output.unsqueeze(2).repeat(1, 1, max_doc_len, 1)
+        context_output_ = torch.cat((context_output1, context_output2), -1)
+        # [bz, max_len, max_len, 2*hid_size]
+
+        context_output_ = context_output_.unsqueeze(3)
+        structure_mask = structure_mask.unsqueeze(-1)
+
+        structure_embd = context_output_ @ structure_mask
+        # [bz, max_len, max_len, 1, 1]
+        structure_embd = structure_embd.squeeze().mean(dim=-1)
+        # [bz, max_len]
+
+        context_output = context_output + structure_embd.unsqueeze(-1)
+        # [bz, max_len, hid_dim]
+
         # ==========STEP2: Extract all node reps of a document graph============
         # extract Mention node representations"""
         mention_num_list = torch.sum(mention_node_sent_num, dim=1).long().tolist()
@@ -192,6 +236,7 @@ class LSR(nn.Module):
         sdp_rep = torch.bmm(sdp_pos[:, :max_sdp_num, :max_doc_len], context_output)
         # extract Entity node representations"""
         entity_rep = torch.bmm(entity_position[:, :, :max_doc_len], context_output)
+
         """concatenate all nodes of an instance"""
         gcn_inputs = []
         all_node_num_batch = []
@@ -408,9 +453,6 @@ class LSR_Bert(nn.Module):
 
         # max_doc_len = docs_rep.shape[1]
 
-        # fmt: off
-        import ipdb; ipdb.set_trace()
-        # fmt: on
         # ==========STEP2: Extract all node reps of a document graph============
         # extract Mention node representations"""
         mention_num_list = torch.sum(mention_node_sent_num, dim=1).long().tolist()
@@ -599,6 +641,13 @@ class LSRLitModel(LightningModule):
             self.criterion(predict_re, batch["relation_multi_label"])
             * batch["relation_mask"].unsqueeze(2)
         ) / torch.sum(batch["relation_mask"])
+
+        if torch.isnan(loss):
+            logger.info("Loss is NaN")
+            logger.info(f"max predict_re: {torch.max(predict_re)}")
+            logger.info(f"min predict_re: {torch.min(predict_re)}")
+
+            exit()
 
         relation_label = batch["relation_label"].data.cpu().numpy()
         output = torch.argmax(predict_re, dim=-1)

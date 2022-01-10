@@ -4,9 +4,9 @@ from all_packages import *
 from torch.utils.data import IterableDataset
 
 
-def load_object(path, ob):
+def load_object(path):
     with open(path, "rb") as handle:
-        return pickle.load(handle, protocol=pickle.HIGHEST_PROTOCOL)
+        return pickle.load(handle)
 
 
 class IterDataset(IterableDataset):
@@ -81,45 +81,43 @@ class IterDataset(IterableDataset):
             self.rel2id = json.load(f)
         self.id2rel = {v: k for k, v in self.rel2id.items()}
 
-        self.data_word = np.load(os.path.join(self.data_path, self.prefix + "_word.npy"))
-        self.data_pos = np.load(os.path.join(self.data_path, self.prefix + "_pos.npy"))
-        self.data_ner = np.load(os.path.join(self.data_path, self.prefix + "_ner.npy"))
-        self.data_char = np.load(os.path.join(self.data_path, self.prefix + "_char.npy"))
+        self.data_word = load_object(os.path.join(self.data_path, self.prefix + "_word.pkl"))
+        self.data_pos = load_object(os.path.join(self.data_path, self.prefix + "_pos.pkl"))
+        self.data_ner = load_object(os.path.join(self.data_path, self.prefix + "_ner.pkl"))
+        self.data_char = load_object(os.path.join(self.data_path, self.prefix + "_char.pkl"))
 
-        # fmt: off
-        import ipdb; ipdb.set_trace()
-        # fmt: on
-
-        self.data_node_position = np.load(
-            os.path.join(self.data_path, self.prefix + "_node_position.npy")
+        self.data_node_position = load_object(
+            os.path.join(self.data_path, self.prefix + "_node_position.pkl")
         )
 
-        self.data_node_position_sent = np.load(
-            os.path.join(self.data_path, self.prefix + "_node_position_sent.npy")
+        self.data_node_position_sent = load_object(
+            os.path.join(self.data_path, self.prefix + "_node_position_sent.pkl")
         )
-        # self.data_adj = np.load(os.path.join(self.data_path, self.prefix+'_adj.npy'))
+        # self.data_adj = load_object(os.path.join(self.data_path, self.prefix+'_adj.pkl'))
 
-        self.data_node_sent_num = np.load(
-            os.path.join(self.data_path, self.prefix + "_node_sent_num.npy")
+        self.data_node_sent_num = load_object(
+            os.path.join(self.data_path, self.prefix + "_node_sent_num.pkl")
         )
 
-        self.data_node_num = np.load(os.path.join(self.data_path, self.prefix + "_node_num.npy"))
-        self.data_entity_position = np.load(
-            os.path.join(self.data_path, self.prefix + "_entity_position.npy")
+        self.data_node_num = load_object(
+            os.path.join(self.data_path, self.prefix + "_node_num.pkl")
+        )
+        self.data_entity_position = load_object(
+            os.path.join(self.data_path, self.prefix + "_entity_position.pkl")
         )
         with open(os.path.join(self.data_path, self.prefix + ".json")) as f:
             self.file = json.load(f)
-        self.data_seg = np.load(os.path.join(self.data_path, self.prefix + "_seg.npy"))
+        self.data_seg = load_object(os.path.join(self.data_path, self.prefix + "_seg.pkl"))
         self.data_len = self.data_word.shape[0]
 
         assert self.data_len == len(self.file)
 
-        self.data_sdp_position = np.load(
-            os.path.join(self.data_path, self.prefix + "_sdp_position.npy")
+        self.data_sdp_position = load_object(
+            os.path.join(self.data_path, self.prefix + "_sdp_position.pkl")
         )
-        self.data_sdp_num = np.load(os.path.join(self.data_path, self.prefix + "_sdp_num.npy"))
-        self.structure_mask = np.load(
-            os.path.join(self.data_path, self.prefix + "_structure_mask.npy")
+        self.data_sdp_num = load_object(os.path.join(self.data_path, self.prefix + "_sdp_num.pkl"))
+        self.structure_mask = load_object(
+            os.path.join(self.data_path, self.prefix + "_structure_mask.pkl")
         )
 
         self.n_batches = self.data_word.shape[0] // self.batch_size
@@ -168,9 +166,7 @@ class IterDataset(IterableDataset):
 
         node_sent_num = torch.zeros(self.batch_size, self.max_sent_num).float()
 
-        structure_mask = torch.zeros(
-            self.batch_size, self.max_length, self.max_length, dtype=torch.long
-        )
+        structure_mask = torch.zeros(self.batch_size, self.max_length, self.max_length)
 
         entity_position = torch.zeros(
             self.batch_size, self.max_entity_num, self.max_length
@@ -351,7 +347,7 @@ class IterDataset(IterableDataset):
                 "sent_num": sentence_num,
                 "sdp_position": sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                 "sdp_num": sdp_nums,
-                "structure_mask": structure_mask,
+                "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
             }
 
     def get_test_batch(self):
@@ -364,9 +360,7 @@ class IterDataset(IterableDataset):
         relation_mask = torch.Tensor(self.batch_size, self.h_t_limit)
         ht_pair_pos = torch.LongTensor(self.batch_size, self.h_t_limit)
         context_seg = torch.LongTensor(self.batch_size, self.max_length)
-        structure_mask = torch.zeros(
-            self.batch_size, self.max_length, self.max_length, dtype=torch.long
-        )
+        structure_mask = torch.zeros(self.batch_size, self.max_length, self.max_length).long()
 
         node_position_sent = torch.zeros(
             self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len
@@ -532,7 +526,7 @@ class IterDataset(IterableDataset):
                 "sdp_position": sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                 "sdp_num": sdp_nums,
                 "vertexsets": vertexSets,
-                "structure_mask": structure_mask,
+                "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
             }
 
     def __iter__(self):

@@ -14,6 +14,7 @@ import dotenv
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import yaml
 from loguru import logger
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer
