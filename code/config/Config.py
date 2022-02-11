@@ -11,7 +11,15 @@ import sklearn.metrics
 # matplotlib.use('Agg')
 import random
 import gc
+import pickle
 from collections import defaultdict
+from datetime import datetime, timedelta
+
+import wandb
+import dotenv
+
+dotenv.load_dotenv(override=True)
+wandb.login()
 
 from operator import add
 
@@ -33,6 +41,10 @@ from utils import torch_utils
 
 def isNaN(num):
     return num != num
+
+def load_object(path):
+    with open(path, "rb") as handle:
+        return pickle.load(handle)
 
 class Node:
     def __init__(self, id, v_id, v_no, sent_id, pos_start, pos_end):
@@ -148,6 +160,11 @@ class Config(object):
         self.evaluate_epoch = args.evaluate_epoch
         self.finetune_emb = args.finetune_emb
 
+        ## Init wandb logger
+        now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H-%M-%S")
+        name = f"docre_{now}"
+        wandb.init(project="LSR", name=name, config=args)
+
     def set_data_path(self, data_path):
         self.data_path = data_path
     def set_max_length(self, max_length):
@@ -188,25 +205,25 @@ class Config(object):
 
         print ('train', prefix)
 
-        self.data_train_word = np.load(os.path.join(self.data_path, prefix + '_word.npy'))
+        self.data_train_word = load_object(os.path.join(self.data_path, prefix + '_word.pkl'))
 
         # elmo_ids = batch_to_ids(batch_words).cuda()
-        self.data_train_pos = np.load(os.path.join(self.data_path, prefix+'_pos.npy'))
-        self.data_train_ner = np.load(os.path.join(self.data_path, prefix+'_ner.npy')) # word_embedding
-        self.data_train_char = np.load(os.path.join(self.data_path, prefix+'_char.npy'))
-        self.data_train_seg = np.load(os.path.join(self.data_path, prefix+'_seg.npy'))
-        self.data_train_node_position = np.load(os.path.join(self.data_path, prefix+'_node_position.npy'))
+        self.data_train_pos = load_object(os.path.join(self.data_path, prefix+'_pos.pkl'))
+        self.data_train_ner = load_object(os.path.join(self.data_path, prefix+'_ner.pkl')) # word_embedding
+        self.data_train_char = load_object(os.path.join(self.data_path, prefix+'_char.pkl'))
+        self.data_train_seg = load_object(os.path.join(self.data_path, prefix+'_seg.pkl'))
+        self.data_train_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.pkl'))
 
-        self.data_train_node_position_sent = np.load(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
+        self.data_train_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.pkl'))
 
-        self.data_train_node_sent_num = np.load(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
+        self.data_train_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.pkl'))
 
-        self.data_train_node_num = np.load(os.path.join(self.data_path, prefix+'_node_num.npy'))
-        self.data_train_entity_position = np.load(os.path.join(self.data_path, prefix+'_entity_position.npy'))
+        self.data_train_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.pkl'))
+        self.data_train_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.pkl'))
         self.train_file = json.load(open(os.path.join(self.data_path, prefix+'.json')))
 
-        self.data_train_sdp_position = np.load(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
-        self.data_train_sdp_num = np.load(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
+        self.data_train_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.pkl'))
+        self.data_train_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.pkl'))
 
         self.train_len = ins_num = self.data_train_word.shape[0]
 
@@ -233,26 +250,26 @@ class Config(object):
         print (prefix)
         self.is_test = ('dev_test' == prefix)
 
-        self.data_test_word = np.load(os.path.join(self.data_path, prefix + '_word.npy'))
-        self.data_test_pos = np.load(os.path.join(self.data_path, prefix+'_pos.npy'))
-        self.data_test_ner = np.load(os.path.join(self.data_path, prefix+'_ner.npy'))
-        self.data_test_char = np.load(os.path.join(self.data_path, prefix+'_char.npy'))
+        self.data_test_word = load_object(os.path.join(self.data_path, prefix + '_word.pkl'))
+        self.data_test_pos = load_object(os.path.join(self.data_path, prefix+'_pos.pkl'))
+        self.data_test_ner = load_object(os.path.join(self.data_path, prefix+'_ner.pkl'))
+        self.data_test_char = load_object(os.path.join(self.data_path, prefix+'_char.pkl'))
 
-        self.data_test_node_position = np.load(os.path.join(self.data_path, prefix+'_node_position.npy'))
+        self.data_test_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.pkl'))
 
-        self.data_test_node_position_sent = np.load(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
-        #self.data_test_adj = np.load(os.path.join(self.data_path, prefix+'_adj.npy'))
+        self.data_test_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.pkl'))
+        #self.data_test_adj = load_object(os.path.join(self.data_path, prefix+'_adj.pkl'))
 
-        self.data_test_node_sent_num = np.load(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
+        self.data_test_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.pkl'))
 
-        self.data_test_node_num = np.load(os.path.join(self.data_path, prefix+'_node_num.npy'))
-        self.data_test_entity_position = np.load(os.path.join(self.data_path, prefix+'_entity_position.npy'))
+        self.data_test_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.pkl'))
+        self.data_test_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.pkl'))
         self.test_file = json.load(open(os.path.join(self.data_path, prefix+'.json')))
-        self.data_test_seg = np.load(os.path.join(self.data_path, prefix+'_seg.npy'))
+        self.data_test_seg = load_object(os.path.join(self.data_path, prefix+'_seg.pkl'))
         self.test_len = self.data_test_word.shape[0]
 
-        self.data_test_sdp_position = np.load(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
-        self.data_test_sdp_num = np.load(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
+        self.data_test_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.pkl'))
+        self.data_test_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.pkl'))
 
         assert(self.test_len==len(self.test_file))
 
@@ -634,6 +651,8 @@ class Config(object):
 
         BCE = nn.BCEWithLogitsLoss(reduction='none')
 
+        wandb.watch(ori_model, BCE)
+
         if not os.path.exists(self.checkpoint_dir):
             os.mkdir(self.checkpoint_dir)
 
@@ -659,6 +678,8 @@ class Config(object):
         dev_score_list.append(f1)
 
         for epoch in range(self.max_epoch):
+            wandb.log({'epoch': epoch})
+
             gc.collect()
             self.acc_NA.clear()
             self.acc_not_NA.clear()
@@ -716,6 +737,9 @@ class Config(object):
 
                 loss = torch.sum(BCE(predict_re, relation_multi_label)*relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
 
+                if epoch % 5 == 0:
+                    wandb.log({"train_loss_step": loss})
+
                 output = torch.argmax(predict_re, dim=-1)
                 output = output.data.cpu().numpy()
 
@@ -757,6 +781,8 @@ class Config(object):
                 model.eval()
 
                 f1, f1_ig, auc, pr_x, pr_y = self.test(model, model_name)
+
+                wandb.log({"val_f1_ign": f1_ig, 'val_auc':auc, 'val_f1': f1})
 
                 model.train()
                 logging('| epoch {:3d} | time: {:5.2f}s'.format(epoch, time.time() - eval_start_time))
