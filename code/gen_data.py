@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import json
+import pickle
 import argparse
 import spacy
 import networkx as nx
@@ -17,6 +18,13 @@ MAX_NODE_NUM = 200
 MAX_ENTITY_NUM = 100
 MAX_SENT_NUM = 30
 MAX_NODE_PER_SENT = 40
+
+NO_RELATE = 0
+INTRA_COREF = 1
+INTRA_RELATE = 2
+INTER_COREF = 3
+INTER_RELATE = 4
+INTRA_ENT_TOK = 5
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--in_path', type = str, default =  "../data")
@@ -186,6 +194,74 @@ def ExtractMDPNode(data, sdp_pos, sdp_num, Ls):
 
     sdp_num[0] = len(flat_sdp)
 
+def create_structure_mask(data, structure_mask):
+    ## group vertexSet
+    dict_entities = dict()
+    sentId2entity = {i: set() for i, _ in enumerate(data["sents"])}
+
+    for tupl in data["vertexSet"]:
+        name = tupl[0]["name"]
+
+        for entity in tupl:
+            sentId2entity[entity["sent_id"]].add(name)
+
+            if name not in dict_entities:
+                dict_entities[name] = {
+                    "pos": {entity["sent_id"]: [entity["pos"]]},
+                    "type": entity["type"],
+                }
+            else:
+                if entity["sent_id"] in dict_entities[name]["pos"]:
+                    dict_entities[name]["pos"][entity["sent_id"]].append(entity["pos"])
+                else:
+                    dict_entities[name]["pos"][entity["sent_id"]] = [entity["pos"]]
+
+    list_tokens = []
+    for ith_sent, sent in enumerate(data["sents"]):
+        ## Create entity_map: determine which token in sentence is entity
+        entities_in_sent = sentId2entity[ith_sent]
+        entity_map = [None] * len(sent)
+        for entity in entities_in_sent:
+            ## Get all positions of entity in ith sentence
+            pos_in_sent = dict_entities[entity]["pos"][ith_sent]
+
+            for pos in pos_in_sent:
+                for j in range(pos[0], pos[1]):
+                    entity_map[j] = entity
+
+        ## Add tokens in sentence to common list
+        for ith_tok, (tok, ent_map) in enumerate(zip(sent, entity_map)):
+            list_tokens.append(
+                {"token": tok, "in_sent_id": ith_tok, "sent_id": ith_sent, "entity": ent_map}
+            )
+
+    for i, tok_i in enumerate(list_tokens):
+        for j, tok_j in enumerate(list_tokens):
+            if tok_i["entity"] is None:
+                continue
+
+            if tok_j["entity"] is None:
+                structure_mask[i][j] = INTRA_ENT_TOK
+                continue
+
+            ## intra
+            if tok_i["sent_id"] == tok_j["sent_id"]:
+                if tok_i["entity"] == tok_j["entity"]:
+                    structure_mask[i][j] = INTRA_COREF
+                else:
+                    structure_mask[i][j] = INTRA_RELATE
+            else:
+                if tok_i["entity"] == tok_j["entity"]:
+                    structure_mask[i][j] = INTER_COREF
+                else:
+                    structure_mask[i][j] = INTER_RELATE
+
+
+def save_object(path, ob):
+    with open(path, "wb") as handle:
+        pickle.dump(ob, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''):
 
     ori_data = json.load(open(data_file_name))
@@ -205,6 +281,8 @@ def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
     sdp_position = np.zeros((sen_tot, MAX_ENTITY_NUM, max_length), dtype= np.int16)
     sdp_num = np.zeros((sen_tot, 1),dtype= np.int16)
 
+    structure_mask = np.zeros((sen_tot, max_length, max_length), dtype=np.int16)
+
     for i in range(len(ori_data)):
         if i % 200 == 0:
             print("generating the {}th instance from the file {}".format(i,data_file_name))
@@ -217,6 +295,8 @@ def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
         node_num[i] = GetNodePosition(ori_data[i], node_position[i], node_position_sent[i], node_sent_num[i], entity_position[i], Ls)
 
         ExtractMDPNode(ori_data[i], sdp_position[i], sdp_num[i], Ls)
+
+        create_structure_mask(ori_data[i], structure_mask[i])
 
         vertexSet =  ori_data[i]['vertexSet']
         # point position added with sent start position
@@ -365,19 +445,20 @@ def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
 
     print("Finishing processing")
 
-    np.save(os.path.join(out_path, name_prefix + suffix + '_word.npy'), sen_word)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_pos.npy'), sen_pos)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_ner.npy'), sen_ner)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_char.npy'), sen_char)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_wordstr.npy'), sen_wordstr)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_seg.npy'), sen_seg)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_position.npy'), node_position)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_position_sent.npy'), node_position_sent)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_num.npy'), node_num)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_entity_position.npy'), entity_position)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_sdp_position.npy'), sdp_position)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_sdp_num.npy'), sdp_num)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_sent_num.npy'), node_sent_num)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_word.pkl'), sen_word)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_pos.pkl'), sen_pos)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_ner.pkl'), sen_ner)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_char.pkl'), sen_char)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_wordstr.pkl'), sen_wordstr)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_seg.pkl'), sen_seg)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_position.pkl'), node_position)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_position_sent.pkl'), node_position_sent)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_num.pkl'), node_num)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_entity_position.pkl'), entity_position)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_sdp_position.pkl'), sdp_position)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_sdp_num.pkl'), sdp_num)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_sent_num.pkl'), node_sent_num)
+    save_object(os.path.join(out_path, name_prefix + suffix + "_structure_mask.pkl"), structure_mask)
 
     print("unk number for {} is: {}".format(suffix, len(unkown_words)))
     print("Finish saving")

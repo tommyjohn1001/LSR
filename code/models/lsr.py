@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from models.encoder import Encoder
 from models.attention import SelfAttention
@@ -58,6 +59,17 @@ class LSR(nn.Module):
             self.reasoner.append(DynamicReasoner(hidden_size, self.reasoner_layer_first, self.dropout_gcn))
             self.reasoner.append(DynamicReasoner(hidden_size, self.reasoner_layer_second, self.dropout_gcn))
 
+        NUM_DEPENDENCY = 6
+        dependency_embd = [
+            nn.Parameter(
+                nn.init.xavier_uniform_(
+                    torch.empty(1, 2 * hidden_size, requires_grad=False if i == 0 else True)
+                )
+            )
+            for i in range(NUM_DEPENDENCY)
+        ]
+        self.dependency_embd = torch.cat(dependency_embd)
+
     def doc_encoder(self, input_sent, context_seg):
         """
         :param sent: sent emb
@@ -104,10 +116,22 @@ class LSR(nn.Module):
 
         return docs_emb, sents_emb
 
+    def get_relation_embd(self, structure_mask):
+
+        self.dependency_embd = self.dependency_embd.to(structure_mask.device)
+
+        relations = F.one_hot(structure_mask, num_classes=6).float()
+        # [bz, max_len, max_len, 6]
+
+        relation_embd = torch.einsum("bxyn,nd->bxyd", relations, self.dependency_embd)
+        # [bz, max_len, max_len, 2*hid_size]
+
+        return relation_embd
+
 
     def forward(self, context_idxs, pos, context_ner, h_mapping, t_mapping,
                 relation_mask, dis_h_2_t, dis_t_2_h, context_seg, mention_node_position, entity_position,
-                mention_node_sent_num, all_node_num, entity_num_list, sdp_pos, sdp_num_list):
+                mention_node_sent_num, all_node_num, entity_num_list, sdp_pos, sdp_num_list, structure_mask):
         """
         :param context_idxs: Token IDs
         :param pos: coref pos IDs
@@ -134,6 +158,27 @@ class LSR(nn.Module):
 
         max_doc_len = docs_rep.shape[1]
         context_output = self.dropout_rate(torch.relu(self.linear_re(docs_rep)))
+
+        ## NOTE: Enable this to use structure mask
+        # ==========STEP1.1: Encode structure into context embedding============
+        structure_mask = self.get_relation_embd(structure_mask)
+        # [bz, max_len, max_len, 2*hid_size]
+
+        context_output1 = context_output.unsqueeze(1).repeat(1, max_doc_len, 1, 1)
+        context_output2 = context_output.unsqueeze(2).repeat(1, 1, max_doc_len, 1)
+        context_output_ = torch.cat((context_output1, context_output2), -1)
+        # [bz, max_len, max_len, 2*hid_size]
+
+        context_output_ = context_output_.unsqueeze(3)
+        structure_mask = structure_mask.unsqueeze(-1)
+
+        structure_embd = context_output_ @ structure_mask
+        # [bz, max_len, max_len, 1, 1]
+        structure_embd = structure_embd.squeeze().mean(dim=-1)
+        # [bz, max_len]
+
+        context_output = context_output + structure_embd.unsqueeze(-1)
+        # [bz, max_len, hid_dim]
 
         '''===========STEP2: Extract all node reps of a document graph============='''
         '''extract Mention node representations'''

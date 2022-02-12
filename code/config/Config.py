@@ -17,9 +17,9 @@ from datetime import datetime, timedelta
 
 import wandb
 import dotenv
+from tqdm import tqdm
 
 dotenv.load_dotenv(override=True)
-wandb.login()
 
 from operator import add
 
@@ -161,9 +161,12 @@ class Config(object):
         self.finetune_emb = args.finetune_emb
 
         ## Init wandb logger
-        now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H-%M-%S")
-        name = f"docre_{now}"
-        wandb.init(project="LSR", name=name, config=args)
+        if args.wandb:
+            wandb.login()
+            now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H-%M-%S")
+            appdx = f"_{args.appdx}" if args.appdx else ""
+            name = f"docre_{now}{appdx}"
+            wandb.init(project="LSR", name=name, config=args)
 
     def set_data_path(self, data_path):
         self.data_path = data_path
@@ -224,6 +227,7 @@ class Config(object):
 
         self.data_train_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.pkl'))
         self.data_train_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.pkl'))
+        self.structure_mask = load_object(os.path.join(self.data_path, prefix + "_structure_mask.pkl"))
 
         self.train_len = ins_num = self.data_train_word.shape[0]
 
@@ -316,6 +320,10 @@ class Config(object):
         entity_position =  torch.zeros(self.batch_size, self.max_entity_num, self.max_length).float().cuda()
         node_num = torch.zeros(self.batch_size, 1).long().cuda()
 
+        structure_mask = torch.zeros(
+            self.batch_size, self.max_length, self.max_length, dtype=torch.long, device=node_num.device
+        )
+
         for b in range(self.train_batches):
 
             entity_num = []
@@ -348,6 +356,7 @@ class Config(object):
                 context_char_idxs[i].copy_(torch.from_numpy(self.data_train_char[index, :]))
                 context_ner[i].copy_(torch.from_numpy(self.data_train_ner[index, :]))
                 context_seg[i].copy_(torch.from_numpy(self.data_train_seg[index, :]))
+                structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 ins = self.train_file[index]
                 labels = ins['labels']
@@ -474,6 +483,7 @@ class Config(object):
                    'sent_num': sentence_num,
                    'sdp_position': sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                    'sdp_num': sdp_nums,
+                   "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
                    }
 
     def get_test_batch(self):
@@ -486,6 +496,7 @@ class Config(object):
         relation_mask = torch.Tensor(self.test_batch_size, self.h_t_limit).cuda()
         ht_pair_pos = torch.LongTensor(self.test_batch_size, self.h_t_limit).cuda()
         context_seg = torch.LongTensor(self.batch_size, self.max_length).cuda()
+        structure_mask = torch.zeros(self.batch_size, self.max_length, self.max_length, dtype=torch.long, device=context_seg.device)
 
         node_position_sent =  torch.zeros(self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len).float()
 
@@ -533,6 +544,7 @@ class Config(object):
                 context_char_idxs[i].copy_(torch.from_numpy(self.data_test_char[index, :]))
                 context_ner[i].copy_(torch.from_numpy(self.data_test_ner[index, :]))
                 context_seg[i].copy_(torch.from_numpy(self.data_test_seg[index, :]))
+                structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 idx2label = defaultdict(list)
                 ins = self.test_file[index]
@@ -632,6 +644,7 @@ class Config(object):
                    'sdp_position': sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                    'sdp_num': sdp_nums,
                    'vertexsets': vertexSets,
+                   "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
                    }
 
     def train(self, model_pattern, model_name):
@@ -647,11 +660,13 @@ class Config(object):
 
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.lr_decay)
 
-        model = nn.DataParallel(ori_model)
+        # model = nn.DataParallel(ori_model)
+        model = ori_model
 
         BCE = nn.BCEWithLogitsLoss(reduction='none')
 
-        wandb.watch(ori_model, BCE)
+        if self.opt.wandb:
+            wandb.watch(ori_model, BCE)
 
         if not os.path.exists(self.checkpoint_dir):
             os.mkdir(self.checkpoint_dir)
@@ -678,7 +693,8 @@ class Config(object):
         dev_score_list.append(f1)
 
         for epoch in range(self.max_epoch):
-            wandb.log({'epoch': epoch})
+            if self.opt.wandb:
+                wandb.log({'epoch': epoch})
 
             gc.collect()
             self.acc_NA.clear()
@@ -688,7 +704,7 @@ class Config(object):
 
             epoch_start_time = time.time()
 
-            for no, data in enumerate(self.get_train_batch()):
+            for no, data in enumerate(tqdm(self.get_train_batch(), desc=f"Epoch: {epoch}", total=self.train_batches)):
                 context_idxs = data['context_idxs']
                 context_pos = data['context_pos']
                 h_mapping = data['h_mapping']
@@ -701,6 +717,7 @@ class Config(object):
                 context_char_idxs = data['context_char_idxs']
                 ht_pair_pos = data['ht_pair_pos']
                 context_seg = data['context_seg']
+                structure_mask = data['structure_mask']
 
                 dis_h_2_t = ht_pair_pos+10
                 dis_t_2_h = -ht_pair_pos+10
@@ -731,14 +748,15 @@ class Config(object):
                 predict_re = model(context_idxs, context_pos, context_ner,
                                    h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
                                    node_position, entity_position, node_sent_num,
-                                   all_node_num, entity_num, sdp_pos, sdp_num)
+                                   all_node_num, entity_num, sdp_pos, sdp_num, structure_mask)
 
                 relation_multi_label = relation_multi_label.cuda()
 
                 loss = torch.sum(BCE(predict_re, relation_multi_label)*relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
 
-                if epoch % 5 == 0:
-                    wandb.log({"train_loss_step": loss})
+                if self.opt.wandb:
+                    if no % 5 == 0:
+                        wandb.log({"train_loss_step": loss})
 
                 output = torch.argmax(predict_re, dim=-1)
                 output = output.data.cpu().numpy()

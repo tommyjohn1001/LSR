@@ -1,3 +1,4 @@
 #!/bin/bash
 
-python train.py -b 16
+python code/train.py --data_path ./prepro_data\
+    --appdx structure_mask
