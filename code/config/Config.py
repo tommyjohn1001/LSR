@@ -858,6 +858,7 @@ class Config(object):
                 L_vertex = data['L_vertex']
                 #input_lengths =  data['input_lengths']
                 context_ner = data['context_ner']
+                structure_mask = data['structure_mask']
                 #context_char_idxs = data['context_char_idxs']
                 relation_mask = data['relation_mask']
                 ht_pair_pos = data['ht_pair_pos']
@@ -882,7 +883,7 @@ class Config(object):
                 predict_re = model(context_idxs, context_pos, context_ner,
                                    h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
                                    node_position, entity_position, node_sent_num,
-                                   all_node_num, entity_num, sdp_pos, sdp_num)
+                                   all_node_num, entity_num, sdp_pos, sdp_num, structure_mask)
 
             predict_re = torch.sigmoid(predict_re)
 
