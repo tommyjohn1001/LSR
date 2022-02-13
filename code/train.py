@@ -161,9 +161,10 @@ from code_bert import LSR
 model = {"LSR": models.LSR, "LSR_bert": LSR}
 
 if args.model_name == "LSR_bert":
-    con = config.ConfigBert(args)
     args.data_path = "./prepro_data_bert"
-    args.appdx += "-bert"
+    args.appdx = args.appdx + "-bert" if args.appdx else "bert"
+
+    con = config.ConfigBert(args)
 else:
     con = config.Config(args)
 con.load_train_data()

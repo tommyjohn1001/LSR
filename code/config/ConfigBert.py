@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from operator import add
 
-from code.utils import load_object
+from utils import load_object
 
 dotenv.load_dotenv(override=True)
 
@@ -196,28 +196,28 @@ class ConfigBert(object):
 
         print ('train', prefix)
 
-        self.data_train_word = load_object(os.path.join(self.data_path, prefix + '_word.npy'))
+        self.data_train_word = load_object(os.path.join(self.data_path, prefix + '_word.pkl'))
 
         # elmo_ids = batch_to_ids(batch_words).cuda()
-        self.data_train_pos = load_object(os.path.join(self.data_path, prefix+'_pos.npy'))
-        self.data_train_ner = load_object(os.path.join(self.data_path, prefix+'_ner.npy')) # word_embedding
-        self.data_train_char = load_object(os.path.join(self.data_path, prefix+'_char.npy'))
-        self.data_train_seg = load_object(os.path.join(self.data_path, prefix+'_seg.npy'))
-        self.data_train_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.npy'))
+        self.data_train_pos = load_object(os.path.join(self.data_path, prefix+'_pos.pkl'))
+        self.data_train_ner = load_object(os.path.join(self.data_path, prefix+'_ner.pkl')) # word_embedding
+        self.data_train_char = load_object(os.path.join(self.data_path, prefix+'_char.pkl'))
+        self.data_train_seg = load_object(os.path.join(self.data_path, prefix+'_seg.pkl'))
+        self.data_train_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.pkl'))
 
-        self.data_train_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
+        self.data_train_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.pkl'))
 
-        self.data_train_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
+        self.data_train_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.pkl'))
 
-        self.data_train_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.npy'))
-        self.data_train_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.npy'))
+        self.data_train_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.pkl'))
+        self.data_train_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.pkl'))
         self.train_file = json.load(open(os.path.join(self.data_path, prefix+'.json')))
 
-        self.data_train_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
-        self.data_train_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
-        self.data_train_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.npy'))
-        self.data_train_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.npy'))
-        self.data_train_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.npy'))
+        self.data_train_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.pkl'))
+        self.data_train_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.pkl'))
+        self.data_train_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.pkl'))
+        self.data_train_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.pkl'))
+        self.data_train_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.pkl'))
         self.structure_mask = load_object(os.path.join(self.data_path, prefix + "_structure_mask.pkl"))
 
         self.train_len = ins_num = self.data_train_word.shape[0]
@@ -233,7 +233,7 @@ class ConfigBert(object):
     def load_test_data(self):
         print("Reading testing data...")
 
-        self.data_word_vec = load_object(os.path.join(self.data_path, 'vec.npy'))
+        self.data_word_vec = np.load(os.path.join(self.data_path, 'vec.npy'))
 
         print("vocab size is: {}".format(len(self.data_word_vec)))
 
@@ -245,30 +245,30 @@ class ConfigBert(object):
         print (prefix)
         self.is_test = ('dev_test' == prefix)
 
-        self.data_test_word = load_object(os.path.join(self.data_path, prefix + '_word.npy'))
-        self.data_test_pos = load_object(os.path.join(self.data_path, prefix+'_pos.npy'))
-        self.data_test_ner = load_object(os.path.join(self.data_path, prefix+'_ner.npy'))
-        self.data_test_char = load_object(os.path.join(self.data_path, prefix+'_char.npy'))
+        self.data_test_word = load_object(os.path.join(self.data_path, prefix + '_word.pkl'))
+        self.data_test_pos = load_object(os.path.join(self.data_path, prefix+'_pos.pkl'))
+        self.data_test_ner = load_object(os.path.join(self.data_path, prefix+'_ner.pkl'))
+        self.data_test_char = load_object(os.path.join(self.data_path, prefix+'_char.pkl'))
 
-        self.data_test_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.npy'))
+        self.data_test_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.pkl'))
 
-        self.data_test_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
-        #self.data_test_adj = load_object(os.path.join(self.data_path, prefix+'_adj.npy'))
+        self.data_test_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.pkl'))
+        #self.data_test_adj = load_object(os.path.join(self.data_path, prefix+'_adj.pkl'))
 
-        self.data_test_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
+        self.data_test_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.pkl'))
 
-        self.data_test_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.npy'))
-        self.data_test_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.npy'))
+        self.data_test_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.pkl'))
+        self.data_test_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.pkl'))
         self.test_file = json.load(open(os.path.join(self.data_path, prefix+'.json')))
-        self.data_test_seg = load_object(os.path.join(self.data_path, prefix+'_seg.npy'))
+        self.data_test_seg = load_object(os.path.join(self.data_path, prefix+'_seg.pkl'))
         self.test_len = self.data_test_word.shape[0]
 
-        self.data_test_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
-        self.data_test_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
+        self.data_test_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.pkl'))
+        self.data_test_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.pkl'))
 
-        self.data_test_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.npy'))
-        self.data_test_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.npy'))
-        self.data_test_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.npy'))
+        self.data_test_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.pkl'))
+        self.data_test_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.pkl'))
+        self.data_test_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.pkl'))
 
         assert(self.test_len==len(self.test_file))
 
@@ -676,7 +676,8 @@ class ConfigBert(object):
 
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.lr_decay)
 
-        model = nn.DataParallel(ori_model)
+        # model = nn.DataParallel(ori_model)
+        model = ori_model
 
         BCE = nn.BCEWithLogitsLoss(reduction='none')
 

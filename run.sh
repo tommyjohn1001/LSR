@@ -1,11 +1,13 @@
 #!/bin/bash
 
+cd code
+
 # 1. For GloVe
 ## Gendata
 python gen_data.py 
 
 ## Train
-python code/train.py\
+python train.py\
     --appdx structure_mask\
     --wandb
 
@@ -14,6 +16,6 @@ python code/train.py\
 python gen_data_bert.py 
 
 ## Train
-python code/train.py --model_name LSR_bert\
+python train.py --model_name LSR_bert\
     --appdx structure_mask\
     --wandb

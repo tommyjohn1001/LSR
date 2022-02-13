@@ -11,7 +11,6 @@ import sklearn.metrics
 # matplotlib.use('Agg')
 import random
 import gc
-import pickle
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -21,7 +20,7 @@ from tqdm import tqdm
 
 from operator import add
 
-from code.utils import load_object
+from utils import load_object
 
 dotenv.load_dotenv(override=True)
 

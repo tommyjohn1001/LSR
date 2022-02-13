@@ -152,7 +152,8 @@ class LSR(nn.Module):
         context_output = pad_sequence(context_output, batch_first=True, padding_value=-1)
         context_output = torch.nn.functional.pad(context_output,(0,0,0,context_idxs.size(-1)-context_output.size(-2)))
         context_output = self.dropout_rate(torch.relu(self.linear_re(context_output)))
-        max_doc_len = 512
+        max_doc_len = context_output.shape[1]
+
 
         # max_doc_len = docs_rep.shape[1]
 

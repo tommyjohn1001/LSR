@@ -1,12 +1,15 @@
-import numpy as np
-import os
-import json
 import argparse
-import spacy
-import networkx as nx
+import json
+import os
 
+import networkx as nx
+import numpy as np
+import spacy
 from pytorch_transformers import BertModel
+
 from models.bert import Bert
+
+from .utils import save_object
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -451,22 +454,23 @@ def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
 
     print("Finishing processing")
 
-    np.save(os.path.join(out_path, name_prefix + suffix + '_word.npy'), sen_word)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_pos.npy'), sen_pos)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_ner.npy'), sen_ner)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_char.npy'), sen_char)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_wordstr.npy'), sen_wordstr)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_seg.npy'), sen_seg)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_position.npy'), node_position)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_position_sent.npy'), node_position_sent)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_num.npy'), node_num)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_entity_position.npy'), entity_position)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_sdp_position.npy'), sdp_position)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_sdp_num.npy'), sdp_num)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_node_sent_num.npy'), node_sent_num)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_bert_word.npy'), bert_token)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_bert_mask.npy'), bert_mask)
-    np.save(os.path.join(out_path, name_prefix + suffix + '_bert_starts.npy'), bert_starts)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_word.pkl'), sen_word)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_pos.pkl'), sen_pos)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_ner.pkl'), sen_ner)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_char.pkl'), sen_char)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_wordstr.pkl'), sen_wordstr)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_seg.pkl'), sen_seg)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_position.pkl'), node_position)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_position_sent.pkl'), node_position_sent)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_num.pkl'), node_num)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_entity_position.pkl'), entity_position)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_sdp_position.pkl'), sdp_position)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_sdp_num.pkl'), sdp_num)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_node_sent_num.pkl'), node_sent_num)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_bert_word.pkl'), bert_token)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_bert_mask.pkl'), bert_mask)
+    save_object(os.path.join(out_path, name_prefix + suffix + '_bert_starts.pkl'), bert_starts)
+    save_object(os.path.join(out_path, name_prefix + suffix + "_structure_mask.pkl"), structure_mask)
 
     print("unk number for {} is: {}".format(suffix, len(unkown_words)))
     print("Finish saving")
