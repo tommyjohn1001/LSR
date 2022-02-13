@@ -12,6 +12,7 @@ import sklearn.metrics
 import random
 import gc
 from collections import defaultdict
+from datetime import datetime, timedelta
 
 import wandb
 import dotenv
@@ -155,6 +156,14 @@ class ConfigBert(object):
 
         self.evaluate_epoch = args.evaluate_epoch
         self.finetune_emb = args.finetune_emb
+
+        ## Init wandb logger
+        if args.wandb:
+            wandb.login()
+            now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H-%M-%S")
+            appdx = f"_{args.appdx}" if args.appdx else ""
+            name = f"docre_{now}{appdx}"
+            wandb.init(project="LSR", name=name, config=args)
 
     def set_data_path(self, data_path):
         self.data_path = data_path
