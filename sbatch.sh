@@ -1,7 +1,7 @@
 #!/bin/bash -e
 #SBATCH --job-name=LSR            # create a short name for your job
-#SBATCH --output=/lustre/scratch/client/vinai/users/hoanglh88/LSR/Feb12.out      # create a output file
-#SBATCH --error=/lustre/scratch/client/vinai/users/hoanglh88/LSR/Feb12.err       # create a error file
+#SBATCH --output=/lustre/scratch/client/vinai/users/hoanglh88/LSR/slurms/Feb12.out      # create a output file
+#SBATCH --error=/lustre/scratch/client/vinai/users/hoanglh88/LSR/slurms/Feb12.err       # create a error file
 #SBATCH --partition=research
 #SBATCH --gres=gpu:1              # gpu count
 #SBATCH --ntasks=1                 # total number of tasks across all nodes
@@ -32,5 +32,7 @@ srun --container-image=/lustre/scratch/client/vinai/users/hoanglh88/dc-miniconda
      conda activate igmc/
 
      cd /hoanglh88/IGMC
-     bash run.sh
+     python code/train.py\
+          --appdx structure_mask\
+          --wandb
      "

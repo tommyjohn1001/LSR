@@ -13,7 +13,15 @@ import random
 import gc
 from collections import defaultdict
 
+import wandb
+import dotenv
+from tqdm import tqdm
+
 from operator import add
+
+from code.utils import load_object
+
+dotenv.load_dotenv(override=True)
 
 # BERT_ENCODER = 'bert'
 # CHEMICAL_TYPE = 'Chemical'
@@ -188,28 +196,29 @@ class ConfigBert(object):
 
         print ('train', prefix)
 
-        self.data_train_word = np.load(os.path.join(self.data_path, prefix + '_word.npy'))
+        self.data_train_word = load_object(os.path.join(self.data_path, prefix + '_word.npy'))
 
         # elmo_ids = batch_to_ids(batch_words).cuda()
-        self.data_train_pos = np.load(os.path.join(self.data_path, prefix+'_pos.npy'))
-        self.data_train_ner = np.load(os.path.join(self.data_path, prefix+'_ner.npy')) # word_embedding
-        self.data_train_char = np.load(os.path.join(self.data_path, prefix+'_char.npy'))
-        self.data_train_seg = np.load(os.path.join(self.data_path, prefix+'_seg.npy'))
-        self.data_train_node_position = np.load(os.path.join(self.data_path, prefix+'_node_position.npy'))
+        self.data_train_pos = load_object(os.path.join(self.data_path, prefix+'_pos.npy'))
+        self.data_train_ner = load_object(os.path.join(self.data_path, prefix+'_ner.npy')) # word_embedding
+        self.data_train_char = load_object(os.path.join(self.data_path, prefix+'_char.npy'))
+        self.data_train_seg = load_object(os.path.join(self.data_path, prefix+'_seg.npy'))
+        self.data_train_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.npy'))
 
-        self.data_train_node_position_sent = np.load(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
+        self.data_train_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
 
-        self.data_train_node_sent_num = np.load(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
+        self.data_train_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
 
-        self.data_train_node_num = np.load(os.path.join(self.data_path, prefix+'_node_num.npy'))
-        self.data_train_entity_position = np.load(os.path.join(self.data_path, prefix+'_entity_position.npy'))
+        self.data_train_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.npy'))
+        self.data_train_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.npy'))
         self.train_file = json.load(open(os.path.join(self.data_path, prefix+'.json')))
 
-        self.data_train_sdp_position = np.load(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
-        self.data_train_sdp_num = np.load(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
-        self.data_train_bert_word = np.load(os.path.join(self.data_path, prefix+'_bert_word.npy'))
-        self.data_train_bert_mask = np.load(os.path.join(self.data_path, prefix+'_bert_mask.npy'))
-        self.data_train_bert_starts = np.load(os.path.join(self.data_path, prefix+'_bert_starts.npy'))
+        self.data_train_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
+        self.data_train_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
+        self.data_train_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.npy'))
+        self.data_train_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.npy'))
+        self.data_train_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.npy'))
+        self.structure_mask = load_object(os.path.join(self.data_path, prefix + "_structure_mask.pkl"))
 
         self.train_len = ins_num = self.data_train_word.shape[0]
 
@@ -224,7 +233,7 @@ class ConfigBert(object):
     def load_test_data(self):
         print("Reading testing data...")
 
-        self.data_word_vec = np.load(os.path.join(self.data_path, 'vec.npy'))
+        self.data_word_vec = load_object(os.path.join(self.data_path, 'vec.npy'))
 
         print("vocab size is: {}".format(len(self.data_word_vec)))
 
@@ -236,30 +245,30 @@ class ConfigBert(object):
         print (prefix)
         self.is_test = ('dev_test' == prefix)
 
-        self.data_test_word = np.load(os.path.join(self.data_path, prefix + '_word.npy'))
-        self.data_test_pos = np.load(os.path.join(self.data_path, prefix+'_pos.npy'))
-        self.data_test_ner = np.load(os.path.join(self.data_path, prefix+'_ner.npy'))
-        self.data_test_char = np.load(os.path.join(self.data_path, prefix+'_char.npy'))
+        self.data_test_word = load_object(os.path.join(self.data_path, prefix + '_word.npy'))
+        self.data_test_pos = load_object(os.path.join(self.data_path, prefix+'_pos.npy'))
+        self.data_test_ner = load_object(os.path.join(self.data_path, prefix+'_ner.npy'))
+        self.data_test_char = load_object(os.path.join(self.data_path, prefix+'_char.npy'))
 
-        self.data_test_node_position = np.load(os.path.join(self.data_path, prefix+'_node_position.npy'))
+        self.data_test_node_position = load_object(os.path.join(self.data_path, prefix+'_node_position.npy'))
 
-        self.data_test_node_position_sent = np.load(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
-        #self.data_test_adj = np.load(os.path.join(self.data_path, prefix+'_adj.npy'))
+        self.data_test_node_position_sent = load_object(os.path.join(self.data_path, prefix+'_node_position_sent.npy'))
+        #self.data_test_adj = load_object(os.path.join(self.data_path, prefix+'_adj.npy'))
 
-        self.data_test_node_sent_num = np.load(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
+        self.data_test_node_sent_num = load_object(os.path.join(self.data_path, prefix+'_node_sent_num.npy'))
 
-        self.data_test_node_num = np.load(os.path.join(self.data_path, prefix+'_node_num.npy'))
-        self.data_test_entity_position = np.load(os.path.join(self.data_path, prefix+'_entity_position.npy'))
+        self.data_test_node_num = load_object(os.path.join(self.data_path, prefix+'_node_num.npy'))
+        self.data_test_entity_position = load_object(os.path.join(self.data_path, prefix+'_entity_position.npy'))
         self.test_file = json.load(open(os.path.join(self.data_path, prefix+'.json')))
-        self.data_test_seg = np.load(os.path.join(self.data_path, prefix+'_seg.npy'))
+        self.data_test_seg = load_object(os.path.join(self.data_path, prefix+'_seg.npy'))
         self.test_len = self.data_test_word.shape[0]
 
-        self.data_test_sdp_position = np.load(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
-        self.data_test_sdp_num = np.load(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
+        self.data_test_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.npy'))
+        self.data_test_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.npy'))
 
-        self.data_test_bert_word = np.load(os.path.join(self.data_path, prefix+'_bert_word.npy'))
-        self.data_test_bert_mask = np.load(os.path.join(self.data_path, prefix+'_bert_mask.npy'))
-        self.data_test_bert_starts = np.load(os.path.join(self.data_path, prefix+'_bert_starts.npy'))
+        self.data_test_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.npy'))
+        self.data_test_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.npy'))
+        self.data_test_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.npy'))
 
         assert(self.test_len==len(self.test_file))
 
@@ -308,6 +317,10 @@ class ConfigBert(object):
         entity_position =  torch.zeros(self.batch_size, self.max_entity_num, self.max_length).float().cuda()
         node_num = torch.zeros(self.batch_size, 1).long().cuda()
 
+        structure_mask = torch.zeros(
+            self.batch_size, self.max_length, self.max_length, dtype=torch.long, device=node_num.device
+        )
+
         for b in range(self.train_batches):
 
             entity_num = []
@@ -343,6 +356,7 @@ class ConfigBert(object):
                 context_seg[i].copy_(torch.from_numpy(self.data_train_seg[index, :]))
                 context_masks[i].copy_(torch.from_numpy(self.data_train_bert_mask[index, :]))
                 context_starts[i].copy_(torch.from_numpy(self.data_train_bert_starts[index, :]))
+                structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 ins = self.train_file[index]
                 labels = ins['labels']
@@ -471,6 +485,7 @@ class ConfigBert(object):
                    'sent_num': sentence_num,
                    'sdp_position': sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                    'sdp_num': sdp_nums,
+                   "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
                    }
 
     def get_test_batch(self):
@@ -485,6 +500,7 @@ class ConfigBert(object):
         context_seg = torch.LongTensor(self.batch_size, self.max_length).cuda()
         context_masks = torch.LongTensor(self.batch_size, self.max_length).cuda()
         context_starts = torch.LongTensor(self.batch_size, self.max_length).cuda()
+        structure_mask = torch.zeros(self.batch_size, self.max_length, self.max_length, dtype=torch.long, device=context_seg.device)
 
         node_position_sent =  torch.zeros(self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len).float()
 
@@ -535,6 +551,7 @@ class ConfigBert(object):
                 context_seg[i].copy_(torch.from_numpy(self.data_test_seg[index, :]))
                 context_masks[i].copy_(torch.from_numpy(self.data_test_bert_mask[index, :]))
                 context_starts[i].copy_(torch.from_numpy(self.data_test_bert_starts[index, :]))
+                structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 idx2label = defaultdict(list)
                 ins = self.test_file[index]
@@ -636,6 +653,7 @@ class ConfigBert(object):
                    'sdp_position': sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                    'sdp_num': sdp_nums,
                    'vertexsets': vertexSets,
+                   "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
                    }
 
     def train(self, model_pattern, model_name):
@@ -687,6 +705,9 @@ class ConfigBert(object):
         dev_score_list.append(f1)
 
         for epoch in range(self.max_epoch):
+            if self.opt.wandb:
+                wandb.log({'epoch': epoch})
+
             gc.collect()
             self.acc_NA.clear()
             self.acc_not_NA.clear()
@@ -695,7 +716,9 @@ class ConfigBert(object):
 
             epoch_start_time = time.time()
 
-            for no, data in enumerate(self.get_train_batch()):
+            for no, data in enumerate(tqdm(self.get_train_batch(), 
+                                           desc=f"Epoch: {epoch}",
+                                           total=self.train_batches)):
                 context_idxs = data['context_idxs']
                 context_pos = data['context_pos']
                 h_mapping = data['h_mapping']
@@ -710,6 +733,7 @@ class ConfigBert(object):
                 context_seg = data['context_seg']
                 context_masks = data['context_masks']
                 context_starts = data['context_starts']
+                structure_mask = data['structure_mask']
 
                 dis_h_2_t = ht_pair_pos+10
                 dis_t_2_h = -ht_pair_pos+10
@@ -739,12 +763,16 @@ class ConfigBert(object):
 
                 predict_re = model(context_idxs, context_pos, context_ner,
                                    h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
-                                   node_position, entity_position, node_sent_num,
-                                   all_node_num, entity_num, sdp_pos, sdp_num, context_masks, context_starts)
+                                   node_position, entity_position, node_sent_num, all_node_num, entity_num,
+                                   sdp_pos, sdp_num, context_masks, context_starts, structure_mask)
 
                 relation_multi_label = relation_multi_label.cuda()
 
                 loss = torch.sum(BCE(predict_re, relation_multi_label)*relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
+
+                if self.opt.wandb:
+                    if no % 5 == 0:
+                        wandb.log({"train_loss_step": loss})
 
                 output = torch.argmax(predict_re, dim=-1)
                 output = output.data.cpu().numpy()
@@ -787,6 +815,8 @@ class ConfigBert(object):
                 model.eval()
 
                 f1, f1_ig, auc, pr_x, pr_y = self.test(model, model_name)
+
+                wandb.log({"val_f1_ign": f1_ig, 'val_auc': auc, 'val_f1': f1})
 
                 model.train()
                 logging('| epoch {:3d} | time: {:5.2f}s'.format(epoch, time.time() - eval_start_time))
@@ -844,6 +874,7 @@ class ConfigBert(object):
                 L_vertex = data['L_vertex']
                 #input_lengths =  data['input_lengths']
                 context_ner = data['context_ner']
+                structure_mask = data['structure_mask']
                 #context_char_idxs = data['context_char_idxs']
                 relation_mask = data['relation_mask']
                 ht_pair_pos = data['ht_pair_pos']
@@ -870,8 +901,8 @@ class ConfigBert(object):
                 sdp_num = torch.Tensor(data['sdp_num']).cuda()
                 predict_re = model(context_idxs, context_pos, context_ner,
                                    h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
-                                   node_position, entity_position, node_sent_num,
-                                   all_node_num, entity_num, sdp_pos, sdp_num, context_masks, context_starts)
+                                   node_position, entity_position, node_sent_num, all_node_num, entity_num,
+                                   sdp_pos, sdp_num, context_masks, context_starts, structure_mask)
 
             predict_re = torch.sigmoid(predict_re)
 

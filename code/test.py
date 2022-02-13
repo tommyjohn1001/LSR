@@ -105,10 +105,10 @@ def print_config(config):
 print_config(args)
 
 model = {
-	'CNN3': models.CNN3,
-	'LSTM': models.LSTM,
-	'BiLSTM': models.BiLSTM,
-	'ContextAware': models.ContextAware,
+	# 'CNN3': models.CNN3,
+	# 'LSTM': models.LSTM,
+	# 'BiLSTM': models.BiLSTM,
+	# 'ContextAware': models.ContextAware,
 	'LSR': models.LSR,
 }
 

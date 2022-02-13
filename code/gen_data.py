@@ -1,10 +1,12 @@
 import numpy as np
 import os
 import json
-import pickle
 import argparse
+
 import spacy
 import networkx as nx
+
+from .utils import save_object
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -257,9 +259,7 @@ def create_structure_mask(data, structure_mask):
                     structure_mask[i][j] = INTER_RELATE
 
 
-def save_object(path, ob):
-    with open(path, "wb") as handle:
-        pickle.dump(ob, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 
 def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''):

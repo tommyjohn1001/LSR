@@ -21,9 +21,16 @@ MAX_ENTITY_NUM = 100
 MAX_SENT_NUM = 30
 MAX_NODE_PER_SENT = 40
 
+NO_RELATE = 0
+INTRA_COREF = 1
+INTRA_RELATE = 2
+INTER_COREF = 3
+INTER_RELATE = 4
+INTRA_ENT_TOK = 5
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--in_path', type = str, default =  "../data")
-parser.add_argument('--out_path', type = str, default = "prepro_data")
+parser.add_argument('--out_path', type = str, default = "prepro_data_bert")
 
 args = parser.parse_args()
 in_path = args.in_path
@@ -191,6 +198,70 @@ def ExtractMDPNode(data, sdp_pos, sdp_num, Ls):
 
     sdp_num[0] = len(flat_sdp)
 
+def create_structure_mask(data, structure_mask):
+    ## group vertexSet
+    dict_entities = dict()
+    sentId2entity = {i: set() for i, _ in enumerate(data["sents"])}
+
+    for tupl in data["vertexSet"]:
+        name = tupl[0]["name"]
+
+        for entity in tupl:
+            sentId2entity[entity["sent_id"]].add(name)
+
+            if name not in dict_entities:
+                dict_entities[name] = {
+                    "pos": {entity["sent_id"]: [entity["pos"]]},
+                    "type": entity["type"],
+                }
+            else:
+                if entity["sent_id"] in dict_entities[name]["pos"]:
+                    dict_entities[name]["pos"][entity["sent_id"]].append(entity["pos"])
+                else:
+                    dict_entities[name]["pos"][entity["sent_id"]] = [entity["pos"]]
+
+    list_tokens = []
+    for ith_sent, sent in enumerate(data["sents"]):
+        ## Create entity_map: determine which token in sentence is entity
+        entities_in_sent = sentId2entity[ith_sent]
+        entity_map = [None] * len(sent)
+        for entity in entities_in_sent:
+            ## Get all positions of entity in ith sentence
+            pos_in_sent = dict_entities[entity]["pos"][ith_sent]
+
+            for pos in pos_in_sent:
+                for j in range(pos[0], pos[1]):
+                    entity_map[j] = entity
+
+        ## Add tokens in sentence to common list
+        for ith_tok, (tok, ent_map) in enumerate(zip(sent, entity_map)):
+            list_tokens.append(
+                {"token": tok, "in_sent_id": ith_tok, "sent_id": ith_sent, "entity": ent_map}
+            )
+
+    for i, tok_i in enumerate(list_tokens):
+        for j, tok_j in enumerate(list_tokens):
+            if tok_i["entity"] is None:
+                continue
+
+            if tok_j["entity"] is None:
+                structure_mask[i][j] = INTRA_ENT_TOK
+                continue
+
+            ## intra
+            if tok_i["sent_id"] == tok_j["sent_id"]:
+                if tok_i["entity"] == tok_j["entity"]:
+                    structure_mask[i][j] = INTRA_COREF
+                else:
+                    structure_mask[i][j] = INTRA_RELATE
+            else:
+                if tok_i["entity"] == tok_j["entity"]:
+                    structure_mask[i][j] = INTER_COREF
+                else:
+                    structure_mask[i][j] = INTER_RELATE
+
+
+
 def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''):
 
     ori_data = json.load(open(data_file_name))
@@ -207,6 +278,8 @@ def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
     entity_position = np.zeros((sen_tot, MAX_ENTITY_NUM, max_length), dtype= np.int16)
     node_num = np.zeros((sen_tot, 1), dtype= np.int16)
 
+    structure_mask = np.zeros((sen_tot, max_length, max_length), dtype=np.int16)
+
     sdp_position = np.zeros((sen_tot, MAX_ENTITY_NUM, max_length), dtype= np.int16)
     sdp_num = np.zeros((sen_tot, 1),dtype= np.int16)
 
@@ -222,6 +295,8 @@ def Init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
         node_num[i] = GetNodePosition(ori_data[i], node_position[i], node_position_sent[i], node_sent_num[i], entity_position[i], Ls)
 
         ExtractMDPNode(ori_data[i], sdp_position[i], sdp_num[i], Ls)
+
+        create_structure_mask(ori_data[i], structure_mask[i])
 
         vertexSet =  ori_data[i]['vertexSet']
         # point position added with sent start position

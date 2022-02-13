@@ -19,9 +19,13 @@ import wandb
 import dotenv
 from tqdm import tqdm
 
+from operator import add
+
+from code.utils import load_object
+
 dotenv.load_dotenv(override=True)
 
-from operator import add
+
 
 # BERT_ENCODER = 'bert'
 # CHEMICAL_TYPE = 'Chemical'
@@ -42,9 +46,6 @@ from utils import torch_utils
 def isNaN(num):
     return num != num
 
-def load_object(path):
-    with open(path, "rb") as handle:
-        return pickle.load(handle)
 
 class Node:
     def __init__(self, id, v_id, v_no, sent_id, pos_start, pos_end):

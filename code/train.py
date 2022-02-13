@@ -120,7 +120,7 @@ parser.add_argument(
     + "_SEED_"
     + str(SEED),
 )
-parser.add_argument("--appdx",type=str,default=None,help="Appendix added to name in wandb")
+parser.add_argument("--appdx", type=str, default=None, help="Appendix added to name in wandb")
 parser.add_argument("--wandb", action="store_true")
 
 args = parser.parse_args()
@@ -162,6 +162,8 @@ model = {"LSR": models.LSR, "LSR_bert": LSR}
 
 if args.model_name == "LSR_bert":
     con = config.ConfigBert(args)
+    args.data_path = "./prepro_data_bert"
+    args.appdx += "-bert"
 else:
     con = config.Config(args)
 con.load_train_data()
