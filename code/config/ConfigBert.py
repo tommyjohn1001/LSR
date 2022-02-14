@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 import wandb
 import dotenv
 from tqdm import tqdm
+from torch.cuda.amp import GradScaler, autocast
 
 from operator import add
 
@@ -685,7 +686,7 @@ class ConfigBert(object):
 
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.lr_decay)
 
-        # model = nn.DataParallel(ori_model)
+        # model = nn.DataParallel(ori_model, device_ids=[0,1])
         model = ori_model
 
         BCE = nn.BCEWithLogitsLoss(reduction='none')
@@ -714,6 +715,8 @@ class ConfigBert(object):
         f1 = 0
         dev_score_list.append(f1)
 
+        scaler = GradScaler()
+
         for epoch in range(self.max_epoch):
             if self.opt.wandb:
                 wandb.log({'epoch': epoch})
@@ -725,10 +728,8 @@ class ConfigBert(object):
             print("epoch:{}, Learning rate:{}".format(epoch,optimizer.param_groups[0]['lr']))
 
             epoch_start_time = time.time()
-
-            for no, data in enumerate(tqdm(self.get_train_batch(), 
-                                           desc=f"Epoch: {epoch}",
-                                           total=self.train_batches)):
+            pbar = tqdm(self.get_train_batch(), desc=f"Epoch: {epoch}", total=self.train_batches)
+            for no, data in enumerate(pbar):
                 context_idxs = data['context_idxs']
                 context_pos = data['context_pos']
                 h_mapping = data['h_mapping']
@@ -771,28 +772,34 @@ class ConfigBert(object):
                 sdp_pos = data['sdp_position'].cuda()
                 sdp_num = torch.Tensor(data['sdp_num']).cuda()
 
-                predict_re = model(context_idxs, context_pos, context_ner,
-                                   h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
-                                   node_position, entity_position, node_sent_num, all_node_num, entity_num,
-                                   sdp_pos, sdp_num, context_masks, context_starts, structure_mask)
+                with autocast():
+                    predict_re = model(context_idxs, context_pos, context_ner,
+                                    h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
+                                    node_position, entity_position, node_sent_num, all_node_num, entity_num,
+                                    sdp_pos, sdp_num, context_masks, context_starts, structure_mask)
 
-                relation_multi_label = relation_multi_label.cuda()
+                    relation_multi_label = relation_multi_label.cuda()
 
-                loss = torch.sum(BCE(predict_re, relation_multi_label)*relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
+                    loss = torch.sum(BCE(predict_re, relation_multi_label)*relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
 
                 if self.opt.wandb:
                     if no % 5 == 0:
                         wandb.log({"train_loss_step": loss})
+
 
                 output = torch.argmax(predict_re, dim=-1)
                 output = output.data.cpu().numpy()
 
                 optimizer.zero_grad()
 
-                loss.backward()
+                loss = scaler.scale(loss)
+                pbar.set_postfix({'loss': f"{loss.item():.3f}"})
+                pbar.refresh() # to show immediately the update
 
+                loss.backward()
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), self.max_grad_norm)
-                optimizer.step()
+                scaler.step(optimizer)
 
                 relation_label = relation_label.data.cpu().numpy()
 
@@ -817,6 +824,8 @@ class ConfigBert(object):
                     logging('| epoch {:2d} | step {:4d} |  ms/b {:5.2f} | train loss {:5.3f} | NA acc: {:4.2f} | not NA acc: {:4.2f}  | tot acc: {:4.2f} '.format(epoch, global_step, elapsed * 1000 / self.period, cur_loss, self.acc_NA.get(), self.acc_not_NA.get(), self.acc_total.get()))
                     total_loss = 0
                     start_time = time.time()
+
+                scaler.update()
 
             if epoch > self.evaluate_epoch:
 
