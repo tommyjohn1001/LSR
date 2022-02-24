@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd code
+cd src
 
 # 1. For GloVe
 ## Gendata
@@ -8,7 +8,7 @@ python gen_data.py
 
 ## Train
 python train.py\
-    --appdx structure_mask\
+    --appdx rel_restrict_v1\
     --wandb
 
 # 2. For BERT
@@ -17,5 +17,5 @@ python gen_data_bert.py
 
 ## Train
 python train.py --model_name LSR_bert\
-    --appdx structure_mask\
+    --appdx rel_restrict_v1\
     --wandb

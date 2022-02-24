@@ -17,13 +17,14 @@ from datetime import datetime, timedelta
 import wandb
 import dotenv
 from tqdm import tqdm
-from torch.cuda.amp import GradScaler, autocast
 
 from operator import add
 
 from utils import load_object
 
 dotenv.load_dotenv(override=True)
+
+
 
 # BERT_ENCODER = 'bert'
 # CHEMICAL_TYPE = 'Chemical'
@@ -43,6 +44,7 @@ from utils import torch_utils
 
 def isNaN(num):
     return num != num
+
 
 class Node:
     def __init__(self, id, v_id, v_no, sent_id, pos_start, pos_end):
@@ -70,7 +72,7 @@ class Accuracy(object):
         self.correct = 0
         self.total = 0
 
-class ConfigBert(object):
+class Config(object):
     def __init__(self, args):
         self.opt = args
         self.acc_NA = Accuracy()
@@ -225,9 +227,6 @@ class ConfigBert(object):
 
         self.data_train_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.pkl'))
         self.data_train_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.pkl'))
-        self.data_train_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.pkl'))
-        self.data_train_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.pkl'))
-        self.data_train_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.pkl'))
         self.structure_mask = load_object(os.path.join(self.data_path, prefix + "_structure_mask.pkl"))
 
         self.train_len = ins_num = self.data_train_word.shape[0]
@@ -276,10 +275,6 @@ class ConfigBert(object):
         self.data_test_sdp_position = load_object(os.path.join(self.data_path, prefix + '_sdp_position.pkl'))
         self.data_test_sdp_num = load_object(os.path.join(self.data_path, prefix+'_sdp_num.pkl'))
 
-        self.data_test_bert_word = load_object(os.path.join(self.data_path, prefix+'_bert_word.pkl'))
-        self.data_test_bert_mask = load_object(os.path.join(self.data_path, prefix+'_bert_mask.pkl'))
-        self.data_test_bert_starts = load_object(os.path.join(self.data_path, prefix+'_bert_starts.pkl'))
-
         assert(self.test_len==len(self.test_file))
 
         print("Finish reading, total reading {} test documetns".format(self.test_len))
@@ -300,8 +295,6 @@ class ConfigBert(object):
         t_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length).cuda()
         relation_multi_label = torch.Tensor(self.batch_size, self.h_t_limit, self.relation_num).cuda()
         relation_mask = torch.Tensor(self.batch_size, self.h_t_limit).cuda()
-        context_masks = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-        context_starts = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
 
         pos_idx = torch.LongTensor(self.batch_size, self.max_length).cuda()
 
@@ -358,14 +351,11 @@ class ConfigBert(object):
             sdp_nums = []
 
             for i, index in enumerate(cur_batch):
-                context_idxs[i].copy_(torch.from_numpy(self.data_train_bert_word[index, :]))
-                # context_idxs[i].copy_(torch.from_numpy(self.data_train_word[index, :]))
+                context_idxs[i].copy_(torch.from_numpy(self.data_train_word[index, :]))
                 context_pos[i].copy_(torch.from_numpy(self.data_train_pos[index, :])) #???
                 context_char_idxs[i].copy_(torch.from_numpy(self.data_train_char[index, :]))
                 context_ner[i].copy_(torch.from_numpy(self.data_train_ner[index, :]))
                 context_seg[i].copy_(torch.from_numpy(self.data_train_seg[index, :]))
-                context_masks[i].copy_(torch.from_numpy(self.data_train_bert_mask[index, :]))
-                context_starts[i].copy_(torch.from_numpy(self.data_train_bert_starts[index, :]))
                 structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 ins = self.train_file[index]
@@ -473,8 +463,6 @@ class ConfigBert(object):
             all_node_num = torch.LongTensor(all_node_num)
 
             yield {'context_idxs': context_idxs[:cur_bsz, :max_c_len].contiguous(),
-                   'context_masks': context_masks[:cur_bsz, :max_c_len].contiguous(), #Ivan
-                   'context_starts': context_starts[:cur_bsz, :max_c_len].contiguous(),
                    'context_pos': context_pos[:cur_bsz, :max_c_len].contiguous(),
                    'h_mapping': h_mapping[:cur_bsz, :max_h_t_cnt, :max_c_len],
                    't_mapping': t_mapping[:cur_bsz, :max_h_t_cnt, :max_c_len],
@@ -508,8 +496,6 @@ class ConfigBert(object):
         relation_mask = torch.Tensor(self.test_batch_size, self.h_t_limit).cuda()
         ht_pair_pos = torch.LongTensor(self.test_batch_size, self.h_t_limit).cuda()
         context_seg = torch.LongTensor(self.batch_size, self.max_length).cuda()
-        context_masks = torch.LongTensor(self.batch_size, self.max_length).cuda()
-        context_starts = torch.LongTensor(self.batch_size, self.max_length).cuda()
         structure_mask = torch.zeros(self.batch_size, self.max_length, self.max_length, dtype=torch.long, device=context_seg.device)
 
         node_position_sent =  torch.zeros(self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len).float()
@@ -553,14 +539,11 @@ class ConfigBert(object):
             vertexSets = []
 
             for i, index in enumerate(cur_batch):
-                context_idxs[i].copy_(torch.from_numpy(self.data_test_bert_word[index, :]))
-                # context_idxs[i].copy_(torch.from_numpy(self.data_test_word[index, :]))
+                context_idxs[i].copy_(torch.from_numpy(self.data_test_word[index, :]))
                 context_pos[i].copy_(torch.from_numpy(self.data_test_pos[index, :]))
                 context_char_idxs[i].copy_(torch.from_numpy(self.data_test_char[index, :]))
                 context_ner[i].copy_(torch.from_numpy(self.data_test_ner[index, :]))
                 context_seg[i].copy_(torch.from_numpy(self.data_test_seg[index, :]))
-                context_masks[i].copy_(torch.from_numpy(self.data_test_bert_mask[index, :]))
-                context_starts[i].copy_(torch.from_numpy(self.data_test_bert_starts[index, :]))
                 structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 idx2label = defaultdict(list)
@@ -639,8 +622,6 @@ class ConfigBert(object):
             all_node_num = torch.LongTensor(all_node_num)
 
             yield {'context_idxs': context_idxs[:cur_bsz, :max_c_len].contiguous(),
-                   'context_masks': context_masks[:cur_bsz, :max_c_len].contiguous(), #Ivan
-                   'context_starts': context_starts[:cur_bsz, :max_c_len].contiguous(),
                    'context_pos': context_pos[:cur_bsz, :max_c_len].contiguous(),
                    'h_mapping': h_mapping[:cur_bsz, :max_h_t_cnt, :max_c_len],
                    't_mapping': t_mapping[:cur_bsz, :max_h_t_cnt, :max_c_len],
@@ -673,23 +654,19 @@ class ConfigBert(object):
             ori_model.load_state_dict(torch.load(self.pretrain_model))
         ori_model.cuda()
 
-        # parameters = [p for p in ori_model.parameters() if p.requires_grad]
-        other_params = [p for name, p in ori_model.named_parameters() if p.requires_grad and not name.startswith("bert")]
+        parameters = [p for p in ori_model.parameters() if p.requires_grad]
 
-
-        # optimizer = torch_utils.get_optimizer(self.optim, parameters, self.lr)
-        optimizer = optim.Adam([
-                        {"params": other_params, "lr":self.lr},
-                        {"params": ori_model.bert.parameters(), "lr": 1e-5},
-                        ], lr=self.lr)
-        print(optimizer)
+        optimizer = torch_utils.get_optimizer(self.optim, parameters, self.lr)
 
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.lr_decay)
 
-        # model = nn.DataParallel(ori_model, device_ids=[0,1])
+        # model = nn.DataParallel(ori_model)
         model = ori_model
 
         BCE = nn.BCEWithLogitsLoss(reduction='none')
+
+        if self.opt.wandb:
+            wandb.watch(ori_model, BCE)
 
         if not os.path.exists(self.checkpoint_dir):
             os.mkdir(self.checkpoint_dir)
@@ -715,8 +692,6 @@ class ConfigBert(object):
         f1 = 0
         dev_score_list.append(f1)
 
-        scaler = GradScaler()
-
         for epoch in range(self.max_epoch):
             if self.opt.wandb:
                 wandb.log({'epoch': epoch})
@@ -728,8 +703,8 @@ class ConfigBert(object):
             print("epoch:{}, Learning rate:{}".format(epoch,optimizer.param_groups[0]['lr']))
 
             epoch_start_time = time.time()
-            pbar = tqdm(self.get_train_batch(), desc=f"Epoch: {epoch}", total=self.train_batches)
-            for no, data in enumerate(pbar):
+
+            for no, data in enumerate(tqdm(self.get_train_batch(), desc=f"Epoch: {epoch}", total=self.train_batches)):
                 context_idxs = data['context_idxs']
                 context_pos = data['context_pos']
                 h_mapping = data['h_mapping']
@@ -742,8 +717,6 @@ class ConfigBert(object):
                 context_char_idxs = data['context_char_idxs']
                 ht_pair_pos = data['ht_pair_pos']
                 context_seg = data['context_seg']
-                context_masks = data['context_masks']
-                context_starts = data['context_starts']
                 structure_mask = data['structure_mask']
 
                 dis_h_2_t = ht_pair_pos+10
@@ -772,34 +745,28 @@ class ConfigBert(object):
                 sdp_pos = data['sdp_position'].cuda()
                 sdp_num = torch.Tensor(data['sdp_num']).cuda()
 
-                with autocast():
-                    predict_re = model(context_idxs, context_pos, context_ner,
-                                    h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
-                                    node_position, entity_position, node_sent_num, all_node_num, entity_num,
-                                    sdp_pos, sdp_num, context_masks, context_starts, structure_mask)
+                predict_re = model(context_idxs, context_pos, context_ner,
+                                   h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
+                                   node_position, entity_position, node_sent_num,
+                                   all_node_num, entity_num, sdp_pos, sdp_num, structure_mask)
 
-                    relation_multi_label = relation_multi_label.cuda()
+                relation_multi_label = relation_multi_label.cuda()
 
-                    loss = torch.sum(BCE(predict_re, relation_multi_label)*relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
+                loss = torch.sum(BCE(predict_re, relation_multi_label)*relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
 
                 if self.opt.wandb:
                     if no % 5 == 0:
                         wandb.log({"train_loss_step": loss})
-
 
                 output = torch.argmax(predict_re, dim=-1)
                 output = output.data.cpu().numpy()
 
                 optimizer.zero_grad()
 
-                loss = scaler.scale(loss)
-                pbar.set_postfix({'loss': f"{loss.item():.3f}"})
-                pbar.refresh() # to show immediately the update
-
                 loss.backward()
-                scaler.unscale_(optimizer)
+
                 torch.nn.utils.clip_grad_norm_(model.parameters(), self.max_grad_norm)
-                scaler.step(optimizer)
+                optimizer.step()
 
                 relation_label = relation_label.data.cpu().numpy()
 
@@ -821,11 +788,9 @@ class ConfigBert(object):
                 if global_step % self.period == 0:
                     cur_loss = total_loss / self.period
                     elapsed = time.time() - start_time
-                    logging('| epoch {:2d} | step {:4d} |  ms/b {:5.2f} | train loss {:5.3f} | NA acc: {:4.2f} | not NA acc: {:4.2f}  | tot acc: {:4.2f} '.format(epoch, global_step, elapsed * 1000 / self.period, cur_loss, self.acc_NA.get(), self.acc_not_NA.get(), self.acc_total.get()))
+                    # logging('| epoch {:2d} | step {:4d} |  ms/b {:5.2f} | train loss {:5.3f} | NA acc: {:4.2f} | not NA acc: {:4.2f}  | tot acc: {:4.2f} '.format(epoch, global_step, elapsed * 1000 / self.period, cur_loss, self.acc_NA.get(), self.acc_not_NA.get(), self.acc_total.get()))
                     total_loss = 0
                     start_time = time.time()
-
-                scaler.update()
 
             if epoch > self.evaluate_epoch:
 
@@ -835,7 +800,7 @@ class ConfigBert(object):
 
                 f1, f1_ig, auc, pr_x, pr_y = self.test(model, model_name)
 
-                wandb.log({"val_f1_ign": f1_ig, 'val_auc': auc, 'val_f1': f1})
+                wandb.log({"val_f1_ign": f1_ig, 'val_auc':auc, 'val_f1': f1})
 
                 model.train()
                 logging('| epoch {:3d} | time: {:5.2f}s'.format(epoch, time.time() - eval_start_time))
@@ -897,9 +862,6 @@ class ConfigBert(object):
                 #context_char_idxs = data['context_char_idxs']
                 relation_mask = data['relation_mask']
                 ht_pair_pos = data['ht_pair_pos']
-                # Ivan
-                context_masks = data['context_masks']
-                context_starts = data['context_starts']
 
                 titles = data['titles']
                 indexes = data['indexes']
@@ -920,8 +882,8 @@ class ConfigBert(object):
                 sdp_num = torch.Tensor(data['sdp_num']).cuda()
                 predict_re = model(context_idxs, context_pos, context_ner,
                                    h_mapping, t_mapping, relation_mask, dis_h_2_t, dis_t_2_h, context_seg,
-                                   node_position, entity_position, node_sent_num, all_node_num, entity_num,
-                                   sdp_pos, sdp_num, context_masks, context_starts, structure_mask)
+                                   node_position, entity_position, node_sent_num,
+                                   all_node_num, entity_num, sdp_pos, sdp_num, structure_mask)
 
             predict_re = torch.sigmoid(predict_re)
 

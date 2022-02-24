@@ -32,7 +32,7 @@ srun --container-image=/lustre/scratch/client/vinai/users/hoanglh88/dc-miniconda
      conda activate igmc/
 
      cd /hoanglh88/IGMC
-     python code/train.py\
+     python src/train.py\
           --appdx structure_mask\
           --wandb
      "

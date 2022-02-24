@@ -1,10 +1,12 @@
 # LSR
-This repository is the PyTorch implementation of our LSR model in ACL 2020 Paper 
+
+This repository is the PyTorch implementation of our LSR model in ACL 2020 Paper
 "[Reasoning with Latent Structure Refinement for Document-Level Relation Extraction](https://arxiv.org/abs/2005.06312)".
 
 # Requirement
+
 ```
-python==3.6.7 
+python==3.6.7
 torch==1.3.1 + CUDA == 9.2 1.5.1
 OR torch==1.5.1 + CUDA == 10.1
 tqdm==4.29.1
@@ -12,50 +14,57 @@ numpy==1.15.4
 spacy==2.1.3
 networkx==2.4
 ```
+
 # Overview of LSR
 
 **Node construtor**:
 
 ![Node Constructor](fig/node.png)
 
-Overview of the Node Constructor: A context encoder is applied to get the contextualized representations of sentences. The representations of mentions and words in the meta dependency path are extracted as mention nodes and MDP nodes. An average pooling is used to construct the entity node from the mention nodes. For example, the entity node *Lutsenko* is constructed by averaging representations of its mentions *Lutsenko* and *He*.
+Overview of the Node Constructor: A context encoder is applied to get the contextualized representations of sentences. The representations of mentions and words in the meta dependency path are extracted as mention nodes and MDP nodes. An average pooling is used to construct the entity node from the mention nodes. For example, the entity node _Lutsenko_ is constructed by averaging representations of its mentions _Lutsenko_ and _He_.
 
 **Dynamic Reasoner**:
+
 <p align="center">
 <img src="./fig/reasoner.png" width="50%" height="50%">
 </p>
 
-Overview of the Dynamic Reasoner. Each block consists of two sub-modules: structure induction and multi-hop reasoning. The first module takes the nodes constructed by the Node Constructor as inputs. Representations of nodes are fed into two feed forward networks before the bilinear transformation. The latent document-level structure is computed by the Matrix-Tree Theorem. The second module takes the structure as input and updates representations of nodes by using the densely connected graph convolutional networks. We stack *N* blocks which correspond to *N* times of refinement. Each iteration outputs the latent structure for inference.
+Overview of the Dynamic Reasoner. Each block consists of two sub-modules: structure induction and multi-hop reasoning. The first module takes the nodes constructed by the Node Constructor as inputs. Representations of nodes are fed into two feed forward networks before the bilinear transformation. The latent document-level structure is computed by the Matrix-Tree Theorem. The second module takes the structure as input and updates representations of nodes by using the densely connected graph convolutional networks. We stack _N_ blocks which correspond to _N_ times of refinement. Each iteration outputs the latent structure for inference.
 
 # Dataset
 
 For the dataset and pretrained embeddings, please download it [here](https://github.com/thunlp/DocRED/tree/master/data), which are officially provided by [DocRED: A Large-Scale Document-Level Relation Extraction Dataset](https://arxiv.org/abs/1906.06127)
-. 
+.
+
 # Data Proprocessing
-After you download the dataset, please put the files train_annotated.json, dev.json and test.json to the ./data directory, and files in pre directory to the code/prepro_data. Run:
+
+After you download the dataset, please put the files train_annotated.json, dev.json and test.json to the ./data directory, and files in pre directory to the src/prepro_data. Run:
 
 ```
-# cd code
-# python3 gen_data.py 
+# cd src
+# python3 gen_data.py
 ```
 
 For the BERT encoder:
-```
-# cd code
-# python3 gen_data_bert.py 
-```
 
+```
+# cd src
+# python3 gen_data_bert.py
+```
 
 # Training
+
 In order to train the model, run:
 
 ```
-# cd code
+# cd src
 # python3 train.py
 ```
+
 For the BERT encoder, Please set the '--model_name' as 'LSR_bert'
 
 # Test
+
 After the training process, we can test the model by:
 
 ```
@@ -67,6 +76,7 @@ python3 test.py
 Codes are adapted from the repo of the ACL2019 paper DocRED [DocRED: A Large-Scale Document-Level Relation Extraction Dataset](https://github.com/thunlp/DocRED) and the Pytorch implementation of [Learning Structured Text Representations](https://github.com/vidhishanair/structured-text-representations). We would like to thanks [Yang Liu](https://github.com/nlpyang) and [Vidhisha Balachandran](https://github.com/vidhishanair) for their constructive suggestions.
 
 ## Citation
+
 If you find our work or the code useful, please consider cite our paper using:
 
 ```
@@ -77,5 +87,3 @@ If you find our work or the code useful, please consider cite our paper using:
  year = {2020}
 }
 ```
-
-

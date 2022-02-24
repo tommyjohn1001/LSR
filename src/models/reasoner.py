@@ -1,9 +1,11 @@
-import torch.nn as nn
 import math
+
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from models.gcn import GraphConvLayer
+
 
 class StructInduction(nn.Module):
     def __init__(self, sem_dim_size, sent_hiddent_size, bidirectional):#, py_version):
@@ -168,6 +170,34 @@ def b_inv(b_mat):
     b_inv, _ = torch.gesv(eye, b_mat)
     return b_inv
 
+def init_positional_encoding(g, node_feat, adj, pos_enc_dim):
+    """
+        Initializing positional encoding with RWPE
+    """
+
+    if len(g.edge_type) == 0:
+        node_feat = g.x
+        PE = torch.zeros((node_feat.size(0), pos_enc_dim), dtype=node_feat.dtype, device=node_feat.device)
+    else:
+        # Geometric diffusion features with Random Walk
+        A = ssp.csr_matrix(pyg_utils.to_dense_adj(g.edge_index).squeeze().numpy())
+        Dinv = ssp.diags(pyg_utils.degree(g.edge_index[0]).numpy().clip(1) ** -1.0) # D^-1
+        RW = A * Dinv  
+        M = RW
+        
+        # Iterate
+        nb_pos_enc = pos_enc_dim
+        PE = [torch.from_numpy(M.diagonal()).float()]
+        M_power = M
+        for _ in range(nb_pos_enc-1):
+            M_power = M_power * M
+            PE.append(torch.from_numpy(M_power.diagonal()).float())
+        
+        PE = torch.stack(PE,dim=-1)
+
+    ## Concate PE to node feat
+    g.x = torch.cat((g.x, PE), -1)
+
 class DynamicReasoner(nn.Module):
     def __init__(self, hidden_size, gcn_layer, dropout_gcn):
         super(DynamicReasoner, self).__init__()
@@ -184,6 +214,9 @@ class DynamicReasoner(nn.Module):
         '''
         '''Structure Induction'''
         _, att = self.struc_att(input)
+
+        ## TODO: Embed RWPE to input 
+
         '''Perform reasoning'''
         output = self.gcn(att[:, :, 1:], input)
         return output

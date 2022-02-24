@@ -186,6 +186,7 @@ wandb
 log/
 checkpoint/
 logs
-.vscode/
+.vssrc/
 tests/
 slurms/
+*.pkl
