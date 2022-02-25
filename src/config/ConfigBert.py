@@ -965,9 +965,11 @@ class ConfigBert(object):
 
                     ## Calculate loss
                     loss = BCE(predict_re, relation_multi_label)
+                    if NaNReporter.check_NaN(loss):
+                        print(f"logits: max {predict_re.max()} - min {predict_re.min()}")
 
                     # Apply masking for relating restriction
-                    mask_rel_restriction = (1 - relation_restriction) * 1e2 + 1
+                    mask_rel_restriction = (1 - relation_restriction) * 10 + 1
                     loss = loss * mask_rel_restriction
 
                     # Apply relation mask
@@ -985,6 +987,9 @@ class ConfigBert(object):
                 loss = scaler.scale(loss)
                 pbar.set_postfix({"loss": f"{loss.item():.3f}"})
                 pbar.refresh()  # to show immediately the update
+
+
+                ## NOTE: Consider skipping updating gradient as loss NaN
 
                 loss.backward()
                 scaler.unscale_(optimizer)

@@ -16,6 +16,7 @@ python train.py\
 python gen_data_bert.py 
 
 ## Train
-python train.py --model_name LSR_bert\
+python train.py\
+    --model_name LSR_bert\
     --appdx rel_restrict_v1\
     --wandb

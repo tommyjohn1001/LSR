@@ -104,28 +104,30 @@ parser.add_argument("--cpu", action="store_true", help="Ignore CUDA.")
 parser.add_argument(
     "--save_name",
     type=str,
-    
 )
 parser.add_argument("--appdx", type=str, default=None, help="Appendix added to name in wandb")
 parser.add_argument("--wandb", action="store_true")
 
 args = parser.parse_args()
 
-args.save_name = NAME\
-    + "_DIM_"\
-    + str(args.emb_dim)\
-    + "_HIDDEN_"\
-    + str(args.hidden_dim)\
-    + "_"\
-    + data_set\
-    + "_LR_"\
-    + str(args.lr)\
-    + "_DECAY_"\
-    + str(args.lr_decay)\
-    + "_BATCHSIZE_"\
-    + str(args.batch_size)\
-    + "_SEED_"\
+args.save_name = (
+    NAME
+    + "_DIM_"
+    + str(args.emb_dim)
+    + "_HIDDEN_"
+    + str(args.hidden_dim)
+    + "_"
+    + data_set
+    + "_LR_"
+    + str(args.lr)
+    + "_DECAY_"
+    + str(args.lr_decay)
+    + "_BATCHSIZE_"
+    + str(args.batch_size)
+    + "_SEED_"
     + str(args.seed)
+)
+
 
 def logging(s, print_=True, log_=True):
     if print_:

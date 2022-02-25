@@ -7,7 +7,6 @@ from pytorch_transformers import BertModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
-
 class LSR(nn.Module):
     def __init__(self, config):
         super(LSR, self).__init__()
@@ -244,7 +243,7 @@ class LSR(nn.Module):
         elif self.use_struct_att:
             gcn_inputs, _ = self.structInduction(gcn_inputs)
             max_all_node_num = torch.max(all_node_num).item()
-            assert gcn_inputs.shape[1] == max_all_node_num
+            assert gcn_inputs.shape[1] == max_all_node_num      
 
         mention_node_position = mention_node_position.permute(0, 2, 1)
         output = torch.bmm(
