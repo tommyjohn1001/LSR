@@ -1,5 +1,5 @@
-# LSR
-This repository is the PyTorch implementation of our LSR model in ACL 2020 Paper 
+# LSR-variant
+exten
 "[Reasoning with Latent Structure Refinement for Document-Level Relation Extraction](https://arxiv.org/abs/2005.06312)".
 
 # Requirement
