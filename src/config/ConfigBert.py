@@ -522,9 +522,13 @@ class ConfigBert(object):
 
                     ## TODO: Add rel-entity dedicated masking here
                     h_type, t_type = hlist[0]["type"], tlist[0]["type"]
-                    for x in self.rel_entity_dedicated[f"{h_type}-{t_type}"]:
-                        possible_rel = self.reltype2id[x]
-                        relation_restriction[i, j, possible_rel] = 1
+                    rel = f"{h_type}-{t_type}"
+                    if rel in self.rel_entity_dedicated:
+                        for x in self.rel_entity_dedicated[rel]:
+                            possible_rel = self.reltype2id[x]
+                            relation_restriction[i, j, possible_rel] = 1
+                    else:
+                        relation_restriction[i, j, :] = 1
 
                     relation_mask[i, j] = 1
                     rt = np.random.randint(len(label))
@@ -760,9 +764,14 @@ class ConfigBert(object):
                                 ht_pair_pos[i, j] = int(self.dis2idx[delta_dis])
 
                             h_type, t_type = hlist[0]["type"], tlist[0]["type"]
-                            for x in self.rel_entity_dedicated[f"{h_type}-{t_type}"]:
-                                possible_rel = self.reltype2id[x]
-                                relation_restriction[i, j, possible_rel] = 1
+                            rel = f"{h_type}-{t_type}"
+                            if rel in self.rel_entity_dedicated:
+                                for x in self.rel_entity_dedicated[rel]:
+                                    possible_rel = self.reltype2id[x]
+                                    relation_restriction[i, j, possible_rel] = 1
+                            else:
+                                relation_restriction[i, j, :] = 1
+
                             j += 1
 
                 max_h_t_cnt = max(max_h_t_cnt, j)
