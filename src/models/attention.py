@@ -53,6 +53,7 @@ class SelfAttention(nn.Module):
 
         if NaNReporter.check_abnormal(weight_one, "weight_one"):
             print(f"att: max: {att.max()} - min: {att.min()}")
+            exit()
 
         output_one = torch.bmm(weight_one, memory)
 
