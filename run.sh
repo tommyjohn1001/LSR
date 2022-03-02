@@ -8,7 +8,7 @@ cd src
 
 ## Train
 # python train.py\
-#     --appdx rel_restrict_v1\
+#     --appdx GNN_replace\
 #     --wandb
 
 # 2. For BERT
@@ -18,7 +18,7 @@ cd src
 ## Train
 python train.py\
     --model_name LSR_bert\
-    --appdx rel_restrict_v1\
+    --appdx GNN_replace\
     --batch_size 10\
     --lr 0.0001\
     --wandb

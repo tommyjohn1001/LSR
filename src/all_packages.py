@@ -1,22 +1,41 @@
+import argparse
+import datetime
 import gc
 import json
 import os
 import os.path as osp
 import random
+import sys
 import time
 from abc import abstractclassmethod
 
+import dotenv
 import numpy as np
 import torch
 import torch.nn as nn
 from loguru import logger
 from tqdm import tqdm
 
+dotenv.load_dotenv(override=True)
+DATA_DIR = os.getenv("DATA")
+
+## Check path to data
+
+if DATA_DIR is None:
+    logger.error("env var DATA not specified in .env")
+    sys.exit(1)
+if not osp.isdir(DATA_DIR):
+    logger.error("DATA dir specified in .env not existed")
+    sys.exit(1)
+
+
 PATHS = {
-    "rel_info": "../data/rel_info.json",
-    "raw_train": "../data/train_annotated.json",
-    "rel_entity_dedicated": "prepro_data_bert/rel_entity_dedicated.json",
-    "rel2id": "prepro_data_bert/rel2id.json",
+    "rel_info": osp.join(DATA_DIR, "raw", "rel_info.json"),
+    "raw_train": osp.join(DATA_DIR, "raw", "train_annotated.json"),
+    "rel_entity_dedicated": osp.join(
+        DATA_DIR, "prepro", "prepro_data_bert/rel_entity_dedicated.json"
+    ),
+    "rel2id": osp.join(DATA_DIR, "prepro", "prepro_data_bert/rel2id.json"),
 }
 
 

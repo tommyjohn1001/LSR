@@ -1,13 +1,10 @@
-import argparse
-import datetime
-import os
-import random
-
 import numpy as np
 import torch
 
 import config
 import models
+
+from all_packages import *
 
 DOCRED = "docred"
 
@@ -27,7 +24,7 @@ DECAY_RATE = 0.98
 parser = argparse.ArgumentParser()
 
 # configurations for data
-parser.add_argument("--data_path", type=str, default="./prepro_data")
+parser.add_argument("--data_path", type=str, default=osp.join(DATA_DIR, "prepro", "prepro_data"))
 
 parser.add_argument(
     "--model_name", type=str, default="LSR", help="[LSR, LSR_bert], name of the model"
@@ -164,7 +161,7 @@ from code_bert import LSR
 model = {"LSR": models.LSR, "LSR_bert": LSR}
 
 if args.model_name == "LSR_bert":
-    args.data_path = "./prepro_data_bert"
+    args.data_path = osp.join(DATA_DIR, "prepro", "prepro_data_bert")
     args.appdx = args.appdx + "-bert" if args.appdx else "bert"
 
     con = config.ConfigBert(args)

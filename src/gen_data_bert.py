@@ -1,13 +1,10 @@
-import argparse
-import json
-import os
-
 import networkx as nx
 import numpy as np
 import spacy
 from pytorch_transformers import BertModel
 
 from models.bert import Bert
+from all_packages import *
 
 from .utils import save_object
 
@@ -80,7 +77,7 @@ INTER_RELATE = 4
 INTRA_ENT_TOK = 5
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--in_path", type=str, default="../data")
+parser.add_argument("--in_path", type=str, default=osp.join(DATA_DIR, "raw"))
 parser.add_argument("--out_path", type=str, default="prepro_data_bert")
 
 args = parser.parse_args()
