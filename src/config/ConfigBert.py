@@ -4,7 +4,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from operator import add
 
-import dotenv
 import sklearn.metrics
 import torch.optim as optim
 import wandb
@@ -15,8 +14,6 @@ from utils import load_object
 # import matplotlib
 # matplotlib.use('Agg')
 
-
-dotenv.load_dotenv(override=True)
 
 # BERT_ENCODER = 'bert'
 # CHEMICAL_TYPE = 'Chemical'
@@ -31,8 +28,6 @@ IGNORE_INDEX = -100
 is_transformer = False
 
 DEBUG_DOC_NO = 60
-
-from utils import torch_utils
 
 
 def isNaN(num):
@@ -172,6 +167,8 @@ class ConfigBert(object):
             name = f"docre_{now}{appdx}"
             wandb.init(project="LSR", name=name, config=args)
 
+        self.device = "cuda:0"
+
     def set_data_path(self, data_path):
         self.data_path = data_path
 
@@ -229,7 +226,7 @@ class ConfigBert(object):
 
         self.data_train_word = load_object(os.path.join(self.data_path, prefix + "_word.pkl"))
 
-        # elmo_ids = batch_to_ids(batch_words).cuda()
+        # elmo_ids = batch_to_ids(batch_words, device=self.device)
         self.data_train_pos = load_object(os.path.join(self.data_path, prefix + "_pos.pkl"))
         self.data_train_ner = load_object(
             os.path.join(self.data_path, prefix + "_ner.pkl")
@@ -355,53 +352,58 @@ class ConfigBert(object):
         self.test_order.sort(key=lambda x: np.sum(self.data_test_word[x] > 0), reverse=True)
 
     def get_train_batch(self):
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
         random.shuffle(self.train_order)
-        context_idxs = torch.LongTensor(self.batch_size, self.max_length).cuda()
-        context_pos = torch.LongTensor(self.batch_size, self.max_length).cuda()
-        h_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length).cuda()
-        t_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length).cuda()
-        relation_multi_label = torch.Tensor(
-            self.batch_size, self.h_t_limit, self.relation_num
-        ).cuda()
-        relation_mask = torch.Tensor(self.batch_size, self.h_t_limit).cuda()
-        context_masks = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-        context_starts = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
 
-        pos_idx = torch.LongTensor(self.batch_size, self.max_length).cuda()
+        context_idxs = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_pos = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        h_mapping = torch.zeros(
+            self.batch_size, self.h_t_limit, self.max_length, device=self.device
+        )
+        t_mapping = torch.zeros(
+            self.batch_size, self.h_t_limit, self.max_length, device=self.device, dtype=torch.float
+        )
+        relation_multi_label = torch.zeros(
+            self.batch_size, self.h_t_limit, self.relation_num, device=self.device, dtype=torch.float
+        )
+        relation_mask = torch.zeros(self.batch_size, self.h_t_limit, device=self.device, dtype=torch.float)
+        context_masks = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_starts = torch.zeros(
+            self.test_batch_size, self.max_length, device=self.device, dtype=torch.long
+        )
 
-        context_ner = torch.LongTensor(self.batch_size, self.max_length).cuda()
-        context_char_idxs = torch.LongTensor(
-            self.batch_size, self.max_length, self.char_limit
-        ).cuda()
+        pos_idx = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
 
-        relation_label = torch.LongTensor(self.batch_size, self.h_t_limit).cuda()
+        context_ner = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_char_idxs = torch.zeros(
+            self.batch_size, self.max_length, self.char_limit, device=self.device, dtype=torch.long
+        )
 
-        ht_pair_pos = torch.LongTensor(self.batch_size, self.h_t_limit).cuda()
+        relation_label = torch.zeros(self.batch_size, self.h_t_limit, device=self.device, dtype=torch.long)
 
-        context_seg = torch.LongTensor(self.batch_size, self.max_length).cuda()
+        ht_pair_pos = torch.zeros(self.batch_size, self.h_t_limit, device=self.device, dtype=torch.long)
+
+        context_seg = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
 
         node_position_sent = torch.zeros(
             self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len
         ).float()
 
         # cgnn_adj = torch.zeros(self.batch_size, 5, self.max_length,self.max_length).float() # 5 indicate the rational type in GCGNN
-        node_position = (
-            torch.zeros(self.batch_size, self.max_node_num, self.max_length).float().cuda()
+        node_position = torch.zeros(
+            self.batch_size, self.max_node_num, self.max_length, device=self.device
         )
 
-        sdp_position = (
-            torch.zeros(self.batch_size, self.max_entity_num, self.max_length).float().cuda()
+        sdp_position = torch.zeros(
+            self.batch_size, self.max_entity_num, self.max_length, device=self.device
         )
-        sdp_num = torch.zeros(self.batch_size, 1).long().cuda()
+        sdp_num = torch.zeros(self.batch_size, 1, dtype=torch.long, device=self.device)
 
-        node_sent_num = torch.zeros(self.batch_size, self.max_sent_num).float().cuda()
+        node_sent_num = torch.zeros(self.batch_size, self.max_sent_num, device=self.device)
 
-        entity_position = (
-            torch.zeros(self.batch_size, self.max_entity_num, self.max_length).float().cuda()
+        entity_position = torch.zeros(
+            self.batch_size, self.max_entity_num, self.max_length, device=self.device
         )
-        node_num = torch.zeros(self.batch_size, 1).long().cuda()
+        node_num = torch.zeros(self.batch_size, 1, dtype=torch.long, device=self.device)
 
         ## Extensions
         relation_restriction = torch.zeros_like(relation_multi_label)
@@ -579,7 +581,7 @@ class ConfigBert(object):
             b_max_mention_num = int(
                 node_num[:cur_bsz].max()
             )  # - max_entity_num - max_sentence_num
-            all_node_num = torch.LongTensor(all_node_num)
+            all_node_num = torch.tensor(all_node_num, dtype=torch.long)
 
             yield {
                 "context_idxs": context_idxs[:cur_bsz, :max_c_len].contiguous(),
@@ -614,27 +616,25 @@ class ConfigBert(object):
             }
 
     def get_test_batch(self):
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        context_idxs = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-        context_pos = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-        h_mapping = torch.Tensor(
-            self.test_batch_size, self.test_relation_limit, self.max_length
-        ).cuda()
-        t_mapping = torch.Tensor(
-            self.test_batch_size, self.test_relation_limit, self.max_length
-        ).cuda()
-        context_ner = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-        context_char_idxs = torch.LongTensor(
-            self.test_batch_size, self.max_length, self.char_limit
-        ).cuda()
-        relation_mask = torch.Tensor(self.test_batch_size, self.h_t_limit).cuda()
-        ht_pair_pos = torch.LongTensor(self.test_batch_size, self.h_t_limit).cuda()
-        context_seg = torch.LongTensor(self.batch_size, self.max_length).cuda()
-        context_masks = torch.LongTensor(self.batch_size, self.max_length).cuda()
-        context_starts = torch.LongTensor(self.batch_size, self.max_length).cuda()
+        context_idxs = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_pos = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
+        h_mapping = torch.zeros(
+            self.test_batch_size, self.test_relation_limit, self.max_length, device=self.device, dtype=torch.float
+        )
+        t_mapping = torch.zeros(
+            self.test_batch_size, self.test_relation_limit, self.max_length, device=self.device, dtype=torch.float
+        )
+        context_ner = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_char_idxs = torch.zeros(
+            self.test_batch_size, self.max_length, self.char_limit, device=self.device, dtype=torch.long
+        )
+        relation_mask = torch.zeros(self.test_batch_size, self.h_t_limit, device=self.device, dtype=torch.float)
+        ht_pair_pos = torch.zeros(self.test_batch_size, self.h_t_limit, device=self.device, dtype=torch.long)
+        context_seg = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_masks = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_starts = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
         relation_restriction = torch.zeros(
-            self.batch_size, self.h_t_limit, self.relation_num, dtype=float, device=device
+            self.batch_size, self.h_t_limit, self.relation_num, dtype=torch.float, device=self.device
         )
         # structure_mask = torch.zeros(
         #     self.batch_size,
@@ -648,20 +648,20 @@ class ConfigBert(object):
             self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len
         ).float()
 
-        node_position = (
-            torch.zeros(self.batch_size, self.max_node_num, self.max_length).float().cuda()
+        node_position = torch.zeros(
+            self.batch_size, self.max_node_num, self.max_length, device=self.device
         )
-        entity_position = (
-            torch.zeros(self.batch_size, self.max_entity_num, self.max_length).float().cuda()
+        entity_position = torch.zeros(
+            self.batch_size, self.max_entity_num, self.max_length, device=self.device
         )
-        node_num = torch.zeros(self.batch_size, 1).long().cuda()
+        node_num = torch.zeros(self.batch_size, 1, dtype=torch.long, device=self.device)
 
-        node_sent_num = torch.zeros(self.batch_size, self.max_sent_num).float().cuda()
+        node_sent_num = torch.zeros(self.batch_size, self.max_sent_num, device=self.device)
 
-        sdp_position = (
-            torch.zeros(self.batch_size, self.max_entity_num, self.max_length).float().cuda()
+        sdp_position = torch.zeros(
+            self.batch_size, self.max_entity_num, self.max_length, device=self.device
         )
-        sdp_num = torch.zeros(self.batch_size, 1).long().cuda()
+        sdp_num = torch.zeros(self.batch_size, 1, dtype=torch.long, device=self.device)
 
         for b in range(self.test_batches):
 
@@ -798,7 +798,7 @@ class ConfigBert(object):
             b_max_mention_num = int(
                 node_num[:cur_bsz].max()
             )  # - max_entity_num - max_sentence_num
-            all_node_num = torch.LongTensor(all_node_num)
+            all_node_num = torch.tensor(all_node_num, dtype=torch.long)
 
             yield {
                 "context_idxs": context_idxs[:cur_bsz, :max_c_len].contiguous(),
@@ -941,11 +941,11 @@ class ConfigBert(object):
                 entity_position = data["entity_position"].cuda()
                 node_sent_num = data["node_sent_num"].cuda()
                 all_node_num = data["all_node_num"].cuda()
-                entity_num = torch.Tensor(data["entity_num"]).cuda()
-                # sent_num = torch.Tensor(data['sent_num']).cuda()
+                entity_num = torch.tensor(data["entity_num"], device=self.device)
+                # sent_num = torch.tensor(data['sent_num'], device=self.device)
 
                 sdp_pos = data["sdp_position"].cuda()
-                sdp_num = torch.Tensor(data["sdp_num"]).cuda()
+                sdp_num = torch.tensor(data["sdp_num"], device=self.device)
 
                 with autocast():
                     predict_re = model(
@@ -977,9 +977,8 @@ class ConfigBert(object):
                     if NaNReporter.check_NaN(loss):
                         print(f"logits: max {predict_re.max()} - min {predict_re.min()}")
 
-                    # Apply masking for relating restriction
-                    mask_rel_restriction = (1 - relation_restriction) * 10 + 1
-                    loss = loss * mask_rel_restriction
+                    # # Apply masking for relating restriction
+                    loss = loss * relation_restriction
 
                     # Apply relation mask
                     loss = torch.sum(loss * relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
@@ -996,7 +995,6 @@ class ConfigBert(object):
                 loss = scaler.scale(loss)
                 pbar.set_postfix({"loss": f"{loss.item():.3f}"})
                 pbar.refresh()  # to show immediately the update
-
 
                 ## NOTE: Consider skipping updating gradient as loss NaN
 
@@ -1140,10 +1138,10 @@ class ConfigBert(object):
                 # node_position_sent = data['node_position_sent']#.cuda()
                 node_sent_num = data["node_sent_num"].cuda()
                 all_node_num = data["all_node_num"].cuda()
-                entity_num = torch.Tensor(data["entity_num"]).cuda()
-                # sent_num = torch.Tensor(data['sent_num']).cuda()
+                entity_num = torch.tensor(data["entity_num"], device=self.device)
+                # sent_num = torch.tensor(data['sent_num'], device=self.device)
                 sdp_pos = data["sdp_position"].cuda()
-                sdp_num = torch.Tensor(data["sdp_num"]).cuda()
+                sdp_num = torch.tensor(data["sdp_num"], device=self.device)
                 predict_re = model(
                     context_idxs,
                     context_pos,

@@ -1,9 +1,9 @@
 import config
 import models
 import numpy as np
-import os
-import argparse
 import torch
+
+from all_packages import *
 
 DOCRED = 'docred'
 
@@ -20,7 +20,7 @@ DECAY_RATE = 0.95
 parser = argparse.ArgumentParser()
 
 # configurations for data
-parser.add_argument('--data_path', type=str, default='./prepro_data')
+parser.add_argument('--data_path', type=str, default=osp.join(DATA_DIR, "prepro", 'prepro_data'))
 parser.add_argument('--model_name', type = str, default = 'LSR', help = 'name of the model')
 parser.add_argument('--train_prefix', type = str, default = 'dev_train')
 parser.add_argument('--test_prefix', type = str, default = 'dev_dev')
