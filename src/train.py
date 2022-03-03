@@ -170,6 +170,6 @@ else:
 con.load_train_data()
 con.load_test_data()
 
-print("Training start time: {}".format(datetime.datetime.now()))
+print("Training start time: {}".format(datetime.now()))
 con.train(model[args.model_name], args.save_name)
-print("Finished time: {}".format(datetime.datetime.now()))
+print("Finished time: {}".format(datetime.now()))

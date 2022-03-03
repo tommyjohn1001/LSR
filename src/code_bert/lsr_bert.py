@@ -1,18 +1,17 @@
-import torch
-import torch.nn.functional as F
+from all_packages import *
 from models.attention import SelfAttention
 from models.encoder import Encoder
 from models.reasoner import DynamicReasoner, StructInduction
-from pytorch_transformers import BertModel
-from torch import nn
 from torch.nn.utils.rnn import pad_sequence
+from transformers import BertModel
+
 
 class LSR(nn.Module):
     def __init__(self, config):
         super(LSR, self).__init__()
         self.config = config
 
-        self.bert = BertModel.from_pretrained("bert-base-uncased")
+        self.bert = BertModel.from_pretrained(PATHS["bert"])
         print("loaded bert-base-uncased")
 
         hidden_size = config.rnn_hidden
@@ -56,7 +55,7 @@ class LSR(nn.Module):
                 DynamicReasoner(hidden_size, self.reasoner_layer_second, self.dropout_gcn)
             )
 
-        NUM_DEPENDENCY = 6
+        # NUM_DEPENDENCY = 6
         # dependency_embd = [
         #     nn.Parameter(
         #         nn.init.xavier_uniform_(
@@ -240,10 +239,14 @@ class LSR(nn.Module):
             for i in range(len(self.reasoner)):
                 output = self.reasoner[i](output)
 
+                if NaNReporter.check_abnormal(output, "output"):
+                    print(f"at {i}")
+                    exit()
+
         elif self.use_struct_att:
             gcn_inputs, _ = self.structInduction(gcn_inputs)
             max_all_node_num = torch.max(all_node_num).item()
-            assert gcn_inputs.shape[1] == max_all_node_num      
+            assert gcn_inputs.shape[1] == max_all_node_num
 
         mention_node_position = mention_node_position.permute(0, 2, 1)
         output = torch.bmm(

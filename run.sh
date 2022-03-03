@@ -18,7 +18,7 @@ cd src
 ## Train
 python train.py\
     --model_name LSR_bert\
-    --appdx GNN_replace\
+    --appdx GNN_replace_ResGatedGCN\
     --batch_size 10\
     --lr 0.0001\
     --wandb

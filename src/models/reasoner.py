@@ -1,14 +1,10 @@
-import math
+from all_packages import *
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-from models.gcn import GraphConvLayer
+from models.gcn import CustomResGatedGCN
 
 
 class StructInduction(nn.Module):
-    def __init__(self, sem_dim_size, sent_hiddent_size, bidirectional):#, py_version):
+    def __init__(self, sem_dim_size, sent_hiddent_size, bidirectional):  # , py_version):
         super(StructInduction, self).__init__()
         self.bidirectional = bidirectional
         self.sem_dim_size = sem_dim_size
@@ -31,7 +27,7 @@ class StructInduction(nn.Module):
         self.exparam = nn.Parameter(torch.Tensor(1, 1, self.sem_dim_size))
         torch.nn.init.xavier_uniform_(self.exparam)
 
-        self.fzlinear = nn.Linear(3 * self.sem_dim_size, 2*self.sem_dim_size, bias=True)
+        self.fzlinear = nn.Linear(3 * self.sem_dim_size, 2 * self.sem_dim_size, bias=True)
         torch.nn.init.xavier_uniform_(self.fzlinear.weight)
         nn.init.constant_(self.fzlinear.bias, 0)
 
@@ -40,19 +36,30 @@ class StructInduction(nn.Module):
         batch_size, token_size, dim_size = input.size()
 
         """STEP1: Calculating Attention Matrix"""
-        if (self.bidirectional):
+        if self.bidirectional:
             input = input.view(batch_size, token_size, 2, dim_size // 2)
-            sem_v = torch.cat((input[:, :, 0, :self.sem_dim_size // 2], input[:, :, 1, :self.sem_dim_size // 2]), 2)
-            str_v = torch.cat((input[:, :, 0, self.sem_dim_size // 2:], input[:, :, 1, self.sem_dim_size // 2:]), 2)
+            sem_v = torch.cat(
+                (
+                    input[:, :, 0, : self.sem_dim_size // 2],
+                    input[:, :, 1, : self.sem_dim_size // 2],
+                ),
+                2,
+            )
+            str_v = torch.cat(
+                (
+                    input[:, :, 0, self.sem_dim_size // 2 :],
+                    input[:, :, 1, self.sem_dim_size // 2 :],
+                ),
+                2,
+            )
         else:
-            sem_v = input[:, :, :self.sem_dim_size]
-            str_v = input[:, :, self.sem_dim_size:]
+            sem_v = input[:, :, : self.sem_dim_size]
+            str_v = input[:, :, self.sem_dim_size :]
 
         tp = torch.tanh(self.tp_linear(str_v))  # b*s, token, h1
         tc = torch.tanh(self.tc_linear(str_v))  # b*s, token, h1
         tp = tp.unsqueeze(2).expand(tp.size(0), tp.size(1), tp.size(1), tp.size(2)).contiguous()
         tc = tc.unsqueeze(2).expand(tc.size(0), tc.size(1), tc.size(1), tc.size(2)).contiguous()
-
 
         f_ij = self.bilinear(tp, tc).squeeze()  # b*s, token , token
         f_i = torch.exp(self.fi_linear(str_v)).squeeze()  # b*s, token
@@ -105,11 +112,12 @@ class StructInduction(nn.Module):
 
         return output, df
 
+
 class StructInductionNoSplit(nn.Module):
-    def __init__(self, sent_hiddent_size, bidirectional):#, py_version):
+    def __init__(self, sent_hiddent_size, bidirectional):  # , py_version):
         super(StructInductionNoSplit, self).__init__()
         self.bidirectional = bidirectional
-        self.str_dim_size = sent_hiddent_size #- self.sem_dim_size
+        self.str_dim_size = sent_hiddent_size  # - self.sem_dim_size
 
         self.model_dim = sent_hiddent_size
 
@@ -165,38 +173,43 @@ class StructInductionNoSplit(nn.Module):
 
         return output, df
 
+
 def b_inv(b_mat):
     eye = torch.rand(b_mat.size(0), b_mat.size(1), b_mat.size(2)).cuda()
     b_inv, _ = torch.gesv(eye, b_mat)
     return b_inv
 
+
 def init_positional_encoding(g, node_feat, adj, pos_enc_dim):
     """
-        Initializing positional encoding with RWPE
+    Initializing positional encoding with RWPE
     """
 
     if len(g.edge_type) == 0:
         node_feat = g.x
-        PE = torch.zeros((node_feat.size(0), pos_enc_dim), dtype=node_feat.dtype, device=node_feat.device)
+        PE = torch.zeros(
+            (node_feat.size(0), pos_enc_dim), dtype=node_feat.dtype, device=node_feat.device
+        )
     else:
         # Geometric diffusion features with Random Walk
         A = ssp.csr_matrix(pyg_utils.to_dense_adj(g.edge_index).squeeze().numpy())
-        Dinv = ssp.diags(pyg_utils.degree(g.edge_index[0]).numpy().clip(1) ** -1.0) # D^-1
-        RW = A * Dinv  
+        Dinv = ssp.diags(pyg_utils.degree(g.edge_index[0]).numpy().clip(1) ** -1.0)  # D^-1
+        RW = A * Dinv
         M = RW
-        
+
         # Iterate
         nb_pos_enc = pos_enc_dim
         PE = [torch.from_numpy(M.diagonal()).float()]
         M_power = M
-        for _ in range(nb_pos_enc-1):
+        for _ in range(nb_pos_enc - 1):
             M_power = M_power * M
             PE.append(torch.from_numpy(M_power.diagonal()).float())
-        
-        PE = torch.stack(PE,dim=-1)
+
+        PE = torch.stack(PE, dim=-1)
 
     ## Concate PE to node feat
     g.x = torch.cat((g.x, PE), -1)
+
 
 class DynamicReasoner(nn.Module):
     def __init__(self, hidden_size, gcn_layer, dropout_gcn):
@@ -205,18 +218,19 @@ class DynamicReasoner(nn.Module):
         self.gcn_layer = gcn_layer
         self.dropout_gcn = dropout_gcn
         self.struc_att = StructInduction(hidden_size // 2, hidden_size, True)
-        self.gcn = GraphConvLayer(hidden_size, self.gcn_layer, self.dropout_gcn, self_loop=True)
+        # self.gcn = GraphConvLayer(hidden_size, self.gcn_layer, self.dropout_gcn, self_loop=True)
+        self.gcn = CustomResGatedGCN(hidden_size, self.gcn_layer, self.dropout_gcn)
 
     def forward(self, input):
-        '''
+        """
         :param input:
         :return:
-        '''
-        '''Structure Induction'''
+        """
+        """Structure Induction"""
         _, att = self.struc_att(input)
 
-        ## TODO: Embed RWPE to input 
+        ## TODO: Embed RWPE to input
 
-        '''Perform reasoning'''
+        """Perform reasoning"""
         output = self.gcn(att[:, :, 1:], input)
         return output

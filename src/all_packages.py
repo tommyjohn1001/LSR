@@ -1,26 +1,28 @@
 import argparse
-import datetime
 import gc
 import json
+import math
 import os
 import os.path as osp
 import random
 import sys
 import time
 from abc import abstractclassmethod
+from datetime import datetime, timedelta
 
 import dotenv
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from loguru import logger
 from tqdm import tqdm
 
 dotenv.load_dotenv(override=True)
 DATA_DIR = os.getenv("DATA")
+RES_DIR = os.getenv("RES")
 
 ## Check path to data
-
 if DATA_DIR is None:
     logger.error("env var DATA not specified in .env")
     sys.exit(1)
@@ -30,6 +32,7 @@ if not osp.isdir(DATA_DIR):
 
 
 PATHS = {
+    "bert": osp.join(RES_DIR, "bert-base-uncased"),
     "rel_info": osp.join(DATA_DIR, "raw", "rel_info.json"),
     "raw_train": osp.join(DATA_DIR, "raw", "train_annotated.json"),
     "rel_entity_dedicated": osp.join(

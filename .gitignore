@@ -179,7 +179,7 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-
+.vscode/
 data/
 prepro_data*/
 wandb

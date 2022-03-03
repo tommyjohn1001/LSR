@@ -115,7 +115,6 @@ model = {
 con = config.Config(args)
 con.load_test_data()
 
-import datetime
-print(datetime.datetime.now())
+print(datetime.now())
 
 con.testall(model[args.model_name], args.save_name, args.input_theta)

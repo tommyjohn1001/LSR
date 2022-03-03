@@ -1,7 +1,6 @@
 # coding: utf-8
 
 from collections import defaultdict
-from datetime import datetime, timedelta
 from operator import add
 
 import sklearn.metrics
@@ -978,6 +977,7 @@ class ConfigBert(object):
                     loss = BCE(predict_re, relation_multi_label)
                     if NaNReporter.check_NaN(loss):
                         print(f"logits: max {predict_re.max()} - min {predict_re.min()}")
+                        sys.exit()
 
                     # # Apply masking for relating restriction
                     # mask_rel_restriction = (1 - relation_restriction) * 10 + 1
@@ -998,8 +998,6 @@ class ConfigBert(object):
                 loss = scaler.scale(loss)
                 pbar.set_postfix({"loss": f"{loss.item():.3f}"})
                 pbar.refresh()  # to show immediately the update
-
-                ## NOTE: Consider skipping updating gradient as loss NaN
 
                 loss.backward()
                 scaler.unscale_(optimizer)
