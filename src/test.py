@@ -1,9 +1,12 @@
+import argparse
+import os
+
+import numpy as np
+import torch
+
 import config
 import models
-import numpy as np
-import os
-import argparse
-import torch
+from all_packages import *
 
 DOCRED = 'docred'
 
@@ -115,7 +118,6 @@ model = {
 con = config.Config(args)
 con.load_test_data()
 
-import datetime
-print(datetime.datetime.now())
+print(datetime.now())
 
 con.testall(model[args.model_name], args.save_name, args.input_theta)

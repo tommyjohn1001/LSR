@@ -1,26 +1,25 @@
 # coding: utf-8
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import numpy as np
-import os
-import time
+import gc
 import json
-import sklearn.metrics
+import os
+
 # import matplotlib
 # matplotlib.use('Agg')
 import random
-import gc
+import time
 from collections import defaultdict
-from datetime import datetime, timedelta
-
-import wandb
-import dotenv
-from tqdm import tqdm
-from torch.cuda.amp import GradScaler, autocast
-
 from operator import add
 
+import dotenv
+import numpy as np
+import sklearn.metrics
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import wandb
+from all_packages import *
+from torch.cuda.amp import GradScaler, autocast
+from tqdm import tqdm
 from utils import load_object
 
 dotenv.load_dotenv(override=True)
@@ -39,7 +38,7 @@ is_transformer = False
 
 DEBUG_DOC_NO = 60
 
-from utils import torch_utils
+
 
 def isNaN(num):
     return num != num
@@ -161,9 +160,14 @@ class ConfigBert(object):
         ## Init wandb logger
         if args.wandb:
             wandb.login()
-            now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H-%M-%S")
+            if args.superpod:
+                now = datetime.now().strftime("%b%d_%H:%M")
+            else:
+                now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H:%M")
             appdx = f"_{args.appdx}" if args.appdx else ""
             name = f"docre_{now}{appdx}"
+            if args.superpod:
+                name += "-superpod"
             wandb.init(project="LSR", name=name, config=args)
 
     def set_data_path(self, data_path):

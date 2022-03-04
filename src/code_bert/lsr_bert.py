@@ -1,12 +1,13 @@
 import torch
-from torch import nn
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
-from models.encoder import Encoder
+from all_packages import *
 from models.attention import SelfAttention
-from models.reasoner import DynamicReasoner
-from models.reasoner import StructInduction
-from pytorch_transformers import BertModel
+from models.encoder import Encoder
+from models.reasoner import DynamicReasoner, StructInduction
+from torch import nn
+from torch.nn.utils.rnn import pad_sequence
+from transformers import BertModel
+
 
 class LSR(nn.Module):
     def __init__(self, config):
@@ -14,7 +15,7 @@ class LSR(nn.Module):
         self.config = config
 
 
-        self.bert = BertModel.from_pretrained('bert-base-uncased')
+        self.bert = BertModel.from_pretrained(PATHS["bert"])
         print("loaded bert-base-uncased")
 
         hidden_size = config.rnn_hidden

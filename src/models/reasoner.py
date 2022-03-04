@@ -69,7 +69,10 @@ class StructInduction(nn.Module):
         L_ij_bar = L_ij
         L_ij_bar[:, 0, :] = f_i
 
-        LLinv = torch.inverse(L_ij_bar)
+        try:
+            LLinv = torch.inverse(L_ij_bar)
+        except RuntimeError:
+            LLinv = L_ij_bar
 
         d0 = f_i * LLinv[:, :, 0]
 

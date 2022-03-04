@@ -4,15 +4,14 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from all_packages import *
 
 from models.lockedropout import LockedDropout
-
-from all_packages import *
 
 
 def stable_masked_softmax(x, mask):
     x = x - x.max()
-    x = x.masked_fill_(mask[:,None] == 0, float("-inf"))
+    x = x.masked_fill_(mask[:, None] == 0, float("-inf"))
     x = torch.softmax(x, -1)
 
     return x
@@ -24,16 +23,8 @@ class SelfAttention(nn.Module):
         self.input_linear = nn.Linear(input_size, 1, bias=False)
         self.dot_scale = nn.Parameter(torch.Tensor(input_size).uniform_(1.0 / (input_size ** 0.5)))
 
-        self.ff1 = nn.Sequential(
-            nn.Linear(120, 120),
-            nn.Tanh(),
-            nn.LayerNorm(120)
-        )
-        self.ff2 = nn.Sequential(
-            nn.Linear(120, 120),
-            nn.Tanh(),
-            nn.LayerNorm(120)
-        )
+        self.ff1 = nn.Sequential(nn.Linear(120, 120), nn.Tanh(), nn.LayerNorm(120))
+        self.ff2 = nn.Sequential(nn.Linear(120, 120), nn.Tanh(), nn.LayerNorm(120))
 
     def forward(self, input, memory, mask):
 
@@ -52,7 +43,7 @@ class SelfAttention(nn.Module):
         # weight_one = F.softmax(att, dim=-1)
 
         if NaNReporter.check_abnormal(weight_one, "weight_one"):
-            print(f"att: max: {att.max()} - min: {att.min()}")
+            sys.exit(1)
 
         output_one = torch.bmm(weight_one, memory)
 

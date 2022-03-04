@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import os
 import random
 
@@ -8,6 +7,7 @@ import torch
 
 import config
 import models
+from all_packages import *
 
 DOCRED = "docred"
 
@@ -16,7 +16,7 @@ data_set = DOCRED
 BATCH_SIZE = 20
 HIDDEN_DIM = 120  # please use 216 for BERT
 # for BERT---
-LR = 1e-3
+LR = 1e-4
 MAX_EPOCH = 200
 
 SEED = 0  # you can set random seed by random.randint(0, 10000)
@@ -108,6 +108,7 @@ parser.add_argument(
 )
 parser.add_argument("--appdx", type=str, default=None, help="Appendix added to name in wandb")
 parser.add_argument("--wandb", action="store_true")
+parser.add_argument("--superpod", action="store_true")
 
 args = parser.parse_args()
 
@@ -171,6 +172,6 @@ else:
 con.load_train_data()
 con.load_test_data()
 
-print("Training start time: {}".format(datetime.datetime.now()))
+print("Training start time: {}".format(datetime.now()))
 con.train(model[args.model_name], args.save_name)
-print("Finished time: {}".format(datetime.datetime.now()))
+print("Finished time: {}".format(datetime.now()))

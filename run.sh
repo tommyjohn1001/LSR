@@ -20,4 +20,5 @@ python train.py\
     --model_name LSR_bert\
     --appdx structure_mask\
     --batch_size 10\
+    --lr 0.0001\
     --wandb
