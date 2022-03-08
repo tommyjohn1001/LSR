@@ -18,6 +18,8 @@ cd src
 ## Train
 python train.py\
     --model_name LSR_bert\
-    --appdx rel_restriction\
+    --appdx rel_restrict\
     --batch_size 10\
-    --lr 0.0001
+    --lr 0.0001\
+    --superpod\
+    --wandb

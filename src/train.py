@@ -3,8 +3,8 @@ import torch
 
 import config
 import models
-
 from all_packages import *
+from code_bert import LSR
 
 DOCRED = "docred"
 
@@ -104,6 +104,7 @@ parser.add_argument(
 )
 parser.add_argument("--appdx", type=str, default=None, help="Appendix added to name in wandb")
 parser.add_argument("--wandb", action="store_true")
+parser.add_argument("--superpod", action="store_true")
 
 args = parser.parse_args()
 
@@ -155,21 +156,14 @@ def print_config(config):
 print_config(args)
 
 
-# Noted that hidden_dim is configured as 216 for BERT-based in our paper.
-from code_bert import LSR
+args.data_path = osp.join(DATA_DIR, "prepro", "prepro_data_bert")
+args.appdx = args.appdx + "-bert" if args.appdx else "bert"
 
-model = {"LSR": models.LSR, "LSR_bert": LSR}
+con = config.ConfigBert(args)
 
-if args.model_name == "LSR_bert":
-    args.data_path = osp.join(DATA_DIR, "prepro", "prepro_data_bert")
-    args.appdx = args.appdx + "-bert" if args.appdx else "bert"
-
-    con = config.ConfigBert(args)
-else:
-    con = config.Config(args)
 con.load_train_data()
 con.load_test_data()
 
-print("Training start time: {}".format(datetime.datetime.now()))
-con.train(model[args.model_name], args.save_name)
-print("Finished time: {}".format(datetime.datetime.now()))
+print("Training start time: {}".format(datetime.now()))
+con.train(LSR, args.save_name)
+print("Finished time: {}".format(datetime.now()))

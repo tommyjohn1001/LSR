@@ -1,18 +1,19 @@
-import torch
-import torch.nn.functional as F
+from all_packages import *
 from models.attention import SelfAttention
 from models.encoder import Encoder
 from models.reasoner import DynamicReasoner, StructInduction
-from pytorch_transformers import BertModel
-from torch import nn
 from torch.nn.utils.rnn import pad_sequence
+from transformers import BertModel
+
 
 class LSR(nn.Module):
-    def __init__(self, config):
-        super(LSR, self).__init__()
-        self.config = config
+    def __init__(self, config, rel_entity_dedicated, id2entity_ded):
+        super().__init__()
 
-        self.bert = BertModel.from_pretrained("bert-base-uncased")
+        self.config = config
+        self.id2entity_ded = id2entity_ded
+
+        self.bert = BertModel.from_pretrained(PATHS["bert"])
         print("loaded bert-base-uncased")
 
         hidden_size = config.rnn_hidden
@@ -30,8 +31,6 @@ class LSR(nn.Module):
         )
         self.dis_embed = nn.Embedding(20, config.dis_size, padding_idx=10)
 
-        self.linear_output = nn.Linear(2 * hidden_size, config.relation_num)
-
         self.relu = nn.ReLU()
 
         self.dropout_rate = nn.Dropout(config.dropout_rate)
@@ -40,7 +39,7 @@ class LSR(nn.Module):
         self.hidden_size = hidden_size
 
         self.use_struct_att = config.use_struct_att
-        if self.use_struct_att == True:
+        if self.use_struct_att is True:
             self.structInduction = StructInduction(hidden_size // 2, hidden_size, True)
 
         self.dropout_gcn = nn.Dropout(config.dropout_gcn)
@@ -56,16 +55,26 @@ class LSR(nn.Module):
                 DynamicReasoner(hidden_size, self.reasoner_layer_second, self.dropout_gcn)
             )
 
-        NUM_DEPENDENCY = 6
-        # dependency_embd = [
-        #     nn.Parameter(
-        #         nn.init.xavier_uniform_(
-        #             torch.empty(1, 2 * hidden_size, requires_grad=False if i == 0 else True)
-        #         )
-        #     )
-        #     for i in range(NUM_DEPENDENCY)
-        # ]
-        # self.dependency_embd = torch.cat(dependency_embd)
+        self.dict_classifier = nn.ModuleDict(
+            {k: nn.Linear(2 * hidden_size, len(v)) for k, v in rel_entity_dedicated.items()}
+        )
+        self.dict_classifier["general"] = nn.Linear(2 * hidden_size, config.relation_num)
+
+        ## This is group of entity pair which has only one potential candidate
+        ## If entity pair belongs to this group, we can infer directly the answer
+        self.group_singlecandidate = set()
+        for k, v in rel_entity_dedicated.items():
+            if len(v) == 1:
+                self.group_singlecandidate.add(k)
+
+    @staticmethod
+    def pad_output(out, max_len):
+        zeros = max_len - out.size(-1)
+        pads = torch.full((zeros,), fill_value=IGNORE_INDEX, device=out.device, dtype=out.dtype)
+        out = torch.cat((out, pads), dim=-1)
+        # [max_len]
+
+        return out
 
     def doc_encoder(self, input_sent, context_seg):
         """
@@ -117,18 +126,6 @@ class LSR(nn.Module):
 
         return docs_emb, sents_emb
 
-    # def get_relation_embd(self, structure_mask):
-
-    #     self.dependency_embd = self.dependency_embd.to(structure_mask.device)
-
-    #     relations = F.one_hot(structure_mask, num_classes=6).float()
-    #     # [bz, max_len, max_len, 6]
-
-    #     relation_embd = torch.einsum("bxyn,nd->bxyd", relations, self.dependency_embd)
-    #     # [bz, max_len, max_len, 2*hid_size]
-
-    #     return relation_embd
-
     def forward(
         self,
         context_idxs,
@@ -149,6 +146,7 @@ class LSR(nn.Module):
         sdp_num_list,
         context_masks,
         context_starts,
+        entity_pairs,
     ):
         """
         :param context_idxs: Token IDs
@@ -170,7 +168,7 @@ class LSR(nn.Module):
         :return:
         """
 
-        """===========STEP1: Encode the document============="""
+        ## ===========STEP1: Encode the document=============
         context_output = self.bert(context_idxs, attention_mask=context_masks)[0]
         context_output = [
             layer[starts.nonzero(as_tuple=False).squeeze(1)]
@@ -185,41 +183,20 @@ class LSR(nn.Module):
 
         # max_doc_len = docs_rep.shape[1]
 
-        ## NOTE: Enable this to use structure mask
-        # # ==========STEP1.1: Encode structure into context embedding============
-        # structure_mask = self.get_relation_embd(structure_mask)
-        # # [bz, max_len, max_len, 2*hid_size]
-
-        # context_output1 = context_output.unsqueeze(1).repeat(1, max_doc_len, 1, 1)
-        # context_output2 = context_output.unsqueeze(2).repeat(1, 1, max_doc_len, 1)
-        # context_output_ = torch.cat((context_output1, context_output2), -1)
-        # # [bz, max_len, max_len, 2*hid_size]
-
-        # context_output_ = context_output_.unsqueeze(3)
-        # structure_mask = structure_mask.unsqueeze(-1)
-
-        # structure_embd = context_output_ @ structure_mask
-        # # [bz, max_len, max_len, 1, 1]
-        # structure_embd = structure_embd.squeeze().mean(dim=-1)
-        # # [bz, max_len]
-
-        # context_output = context_output + structure_embd.unsqueeze(-1)
-        # # [bz, max_len, hid_dim]
-
-        """===========STEP2: Extract all node reps of a document graph============="""
-        """extract Mention node representations"""
+        ## ===========STEP2: Extract all node reps of a document graph=============
+        ## extract Mention node representations"""
         mention_num_list = torch.sum(mention_node_sent_num, dim=1).long().tolist()
         max_mention_num = max(mention_num_list)
         mentions_rep = torch.bmm(
             mention_node_position[:, :max_mention_num, :max_doc_len], context_output
         )  # mentions rep
-        """extract MDP(meta dependency paths) node representations"""
+        ## extract MDP(meta dependency paths) node representations"""
         sdp_num_list = sdp_num_list.long().tolist()
         max_sdp_num = max(sdp_num_list)
         sdp_rep = torch.bmm(sdp_pos[:, :max_sdp_num, :max_doc_len], context_output)
-        """extract Entity node representations"""
+        ## extract Entity node representations"""
         entity_rep = torch.bmm(entity_position[:, :, :max_doc_len], context_output)
-        """concatenate all nodes of an instance"""
+        ## concatenate all nodes of an instance"""
         gcn_inputs = []
         all_node_num_batch = []
         for batch_no, (m_n, e_n, s_n) in enumerate(
@@ -235,15 +212,15 @@ class LSR(nn.Module):
         gcn_inputs = pad_sequence(gcn_inputs).permute(1, 0, 2)
         output = gcn_inputs
 
-        """===========STEP3: Induce the Latent Structure============="""
+        ## ===========STEP3: Induce the Latent Structure=============
         if self.use_reasoning_block:
-            for i in range(len(self.reasoner)):
+            for i, _ in enumerate(self.reasoner):
                 output = self.reasoner[i](output)
 
         elif self.use_struct_att:
             gcn_inputs, _ = self.structInduction(gcn_inputs)
             max_all_node_num = torch.max(all_node_num).item()
-            assert gcn_inputs.shape[1] == max_all_node_num      
+            assert gcn_inputs.shape[1] == max_all_node_num
 
         mention_node_position = mention_node_position.permute(0, 2, 1)
         output = torch.bmm(
@@ -262,6 +239,49 @@ class LSR(nn.Module):
         re_rep = self.dropout_rate(self.relu(self.bili(s_rep, t_rep)))
 
         re_rep = self.self_att(re_rep, re_rep, relation_mask)
-        re_rep = self.linear_output(re_rep)
+        # [bz, h_t_limit, 2 * hid_size]
 
-        return re_rep
+        #####################################################
+        ## For each entity pair, get appropriate classifier
+        #####################################################
+        bz, h_t_limit = relation_mask.size()
+
+        outputs = []
+
+        for b in range(bz):
+            outputs_batch = []
+
+            for pair_th in range(h_t_limit):
+                entity_pair = self.id2entity_ded[entity_pairs[b, pair_th]]
+
+                if entity_pair == "na":
+                    output = torch.full(
+                        (self.config.relation_num,),
+                        fill_value=IGNORE_INDEX,
+                        device=re_rep.device,
+                        dtype=re_rep.dtype,
+                    )
+                elif entity_pair in self.group_singlecandidate:
+                    output = torch.zeros(
+                        (self.config.relation_num,), device=re_rep.device, dtype=re_rep.dtype
+                    )
+                    output[0] = 1
+                else:
+                    if entity_pair not in self.dict_classifier:
+                        entity_pair = "general"
+
+                    classifier = self.dict_classifier[entity_pair]
+                    output = classifier(re_rep[b, pair_th])
+                    # [*]
+                    ## Vì len(output) < config.relation_num nên phải pad
+                    output = LSR.pad_output(output, self.config.relation_num)
+
+                outputs_batch.append(output.unsqueeze(0))
+
+            outputs_batch = torch.cat(outputs_batch, dim=0)
+            outputs.append(outputs_batch.unsqueeze(0))
+
+        outputs = torch.cat(outputs, dim=0)
+        # [bz, h_t_limits, relation_num]
+
+        return outputs

@@ -1,7 +1,6 @@
 # coding: utf-8
 
 from collections import defaultdict
-from datetime import datetime, timedelta
 from operator import add
 
 import sklearn.metrics
@@ -22,16 +21,13 @@ from utils import load_object
 # DEBUG_MODE = "DEBUG"
 # RUNNING_MODE = 'RUN'
 
-MAX_NODE_NUM = 512
-
-IGNORE_INDEX = -100
 is_transformer = False
 
 DEBUG_DOC_NO = 60
 
-
-def isNaN(num):
-    return num != num
+torch.manual_seed(0)
+random.seed(0)
+np.random.seed(0)
 
 
 class Node:
@@ -155,6 +151,9 @@ class ConfigBert(object):
 
         with open(PATHS["rel_entity_dedicated"]) as fp:
             self.rel_entity_dedicated = json.load(fp)
+        self.entity_ded2id = {k: i + 1 for i, k in enumerate(self.rel_entity_dedicated.keys())}
+        self.entity_ded2id["na"] = 0
+        self.id2entity_ded = {v: k for k, v in self.entity_ded2id.items()}
 
         with open(PATHS["rel2id"]) as fp:
             self.reltype2id = json.load(fp)
@@ -162,9 +161,14 @@ class ConfigBert(object):
         ## Init wandb logger
         if args.wandb:
             wandb.login()
-            now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H:%M")
+            if args.superpod:
+                now = datetime.now().strftime("%b%d_%H:%M")
+            else:
+                now = (datetime.now() + timedelta(hours=7)).strftime("%b%d_%H:%M")
             appdx = f"_{args.appdx}" if args.appdx else ""
             name = f"docre_{now}{appdx}"
+            if args.superpod:
+                name += "-superpod"
             wandb.init(project="LSR", name=name, config=args)
 
         self.device = "cuda:0"
@@ -342,7 +346,7 @@ class ConfigBert(object):
 
         assert self.test_len == len(self.test_file)
 
-        print("Finish reading, total reading {} test documetns".format(self.test_len))
+        print(f"Finish reading, total reading {self.test_len} test documents")
 
         self.test_batches = self.data_test_word.shape[0] // self.test_batch_size
         if self.data_test_word.shape[0] % self.test_batch_size != 0:
@@ -353,36 +357,34 @@ class ConfigBert(object):
 
     def get_train_batch(self):
         random.shuffle(self.train_order)
+        kwargs = {"device": self.device, "dtype": torch.float}
+        kwargs2 = {"device": self.device, "dtype": torch.long}
 
-        context_idxs = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
-        context_pos = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_idxs = torch.zeros(self.batch_size, self.max_length, **kwargs2)
+        context_pos = torch.zeros(self.batch_size, self.max_length, **kwargs2)
         h_mapping = torch.zeros(
             self.batch_size, self.h_t_limit, self.max_length, device=self.device
         )
-        t_mapping = torch.zeros(
-            self.batch_size, self.h_t_limit, self.max_length, device=self.device, dtype=torch.float
-        )
+        t_mapping = torch.zeros(self.batch_size, self.h_t_limit, self.max_length, **kwargs)
         relation_multi_label = torch.zeros(
-            self.batch_size, self.h_t_limit, self.relation_num, device=self.device, dtype=torch.float
+            self.batch_size, self.h_t_limit, self.relation_num, **kwargs
         )
-        relation_mask = torch.zeros(self.batch_size, self.h_t_limit, device=self.device, dtype=torch.float)
-        context_masks = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
-        context_starts = torch.zeros(
-            self.test_batch_size, self.max_length, device=self.device, dtype=torch.long
-        )
+        relation_mask = torch.zeros_like(relation_multi_label)
+        context_masks = torch.zeros(self.test_batch_size, self.max_length, **kwargs2)
+        context_starts = torch.zeros(self.test_batch_size, self.max_length, **kwargs2)
 
-        pos_idx = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        pos_idx = torch.zeros(self.batch_size, self.max_length, **kwargs2)
 
-        context_ner = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_ner = torch.zeros(self.batch_size, self.max_length, **kwargs2)
         context_char_idxs = torch.zeros(
-            self.batch_size, self.max_length, self.char_limit, device=self.device, dtype=torch.long
+            self.batch_size, self.max_length, self.char_limit, **kwargs2
         )
 
-        relation_label = torch.zeros(self.batch_size, self.h_t_limit, device=self.device, dtype=torch.long)
+        relation_label = torch.zeros(self.batch_size, self.h_t_limit, **kwargs2)
 
-        ht_pair_pos = torch.zeros(self.batch_size, self.h_t_limit, device=self.device, dtype=torch.long)
+        ht_pair_pos = torch.zeros(self.batch_size, self.h_t_limit, **kwargs2)
 
-        context_seg = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_seg = torch.zeros(self.batch_size, self.max_length, **kwargs2)
 
         node_position_sent = torch.zeros(
             self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len
@@ -405,18 +407,7 @@ class ConfigBert(object):
         )
         node_num = torch.zeros(self.batch_size, 1, dtype=torch.long, device=self.device)
 
-        ## Extensions
-        relation_restriction = torch.zeros_like(relation_multi_label)
-        # structure_mask = torch.zeros(
-        #     self.batch_size,
-        #     self.max_length,
-        #     self.max_length,
-        #     dtype=torch.long,
-        #     device=node_num.device,
-        # )
-
         for b in range(self.train_batches):
-
             entity_num = []
             sentence_num = []
             sentence_len = []
@@ -430,8 +421,7 @@ class ConfigBert(object):
             for mapping in [h_mapping, t_mapping]:
                 mapping.zero_()
 
-            for mapping in [relation_multi_label, relation_mask, pos_idx]:
-                mapping.zero_()
+            pos_idx.zero_()
 
             ht_pair_pos.zero_()
 
@@ -440,6 +430,9 @@ class ConfigBert(object):
             max_h_t_cnt = 1
 
             sdp_nums = []
+            entity_pairs = np.full(
+                (self.batch_size, self.h_t_limit), fill_value=self.entity_ded2id["na"]
+            )
 
             for i, index in enumerate(cur_batch):
                 context_idxs[i].copy_(torch.from_numpy(self.data_train_bert_word[index, :]))
@@ -450,7 +443,6 @@ class ConfigBert(object):
                 context_seg[i].copy_(torch.from_numpy(self.data_train_seg[index, :]))
                 context_masks[i].copy_(torch.from_numpy(self.data_train_bert_mask[index, :]))
                 context_starts[i].copy_(torch.from_numpy(self.data_train_bert_starts[index, :]))
-                # structure_mask[i].copy_(torch.from_numpy(self.structure_mask[index, :]))
 
                 ins = self.train_file[index]
                 labels = ins["labels"]
@@ -517,24 +509,38 @@ class ConfigBert(object):
                     else:
                         ht_pair_pos[i, j] = int(self.dis2idx[delta_dis])
 
-                    for r in label:
-                        relation_multi_label[i, j, r] = 1
+                    ##################################################################
+                    ## Create target (relation_multi_label), mask (relation_mask)
+                    ## and entity_pairs (is a list)
+                    ##################################################################
+                    reltypes = [self.id2rel[l] for l in label]
 
-                    ## Establish mask
-
-                    ## TODO: Add rel-entity dedicated masking here
                     h_type, t_type = hlist[0]["type"], tlist[0]["type"]
-                    rel = f"{h_type}-{t_type}"
-                    if rel in self.rel_entity_dedicated:
-                        for x in self.rel_entity_dedicated[rel]:
-                            possible_rel = self.reltype2id[x]
-                            relation_restriction[i, j, possible_rel] = 1
-                    else:
-                        relation_restriction[i, j, :] = 1
+                    entity_pair = f"{h_type}-{t_type}"
 
-                    relation_mask[i, j] = 1
+                    ## Kiểm tra nếu entity_pair có trong danh sách thì kích thước của trg vector
+                    ## bằng số lượng các relation có thể có của entity pair đó
+                    ## còn không thì kích thước của trg vector bằng kích thước tối đa (chính là self.h_t_limit)
+                    len_trg_vector = (
+                        len(self.rel_entity_dedicated[entity_pair])
+                        if entity_pair in self.rel_entity_dedicated
+                        else self.relation_num
+                    )
+
+                    if entity_pair in self.rel_entity_dedicated:
+                        possible_rels = self.rel_entity_dedicated[entity_pair]
+                    else:
+                        possible_rels = ["na"] + list(self.reltype2id.keys())
+
                     rt = np.random.randint(len(label))
                     relation_label[i, j] = label[rt]
+
+                    ## Assign value for target, mask and entity_pairs
+                    for rel in reltypes:
+                        trg_rel = possible_rels.index(rel)
+                        relation_multi_label[i, j, trg_rel] = 1
+                    entity_pairs[i, j] = self.entity_ded2id[entity_pair]
+                    relation_mask[i, j, :len_trg_vector] = 1
 
                 lower_bound = len(ins["na_triple"])
 
@@ -593,8 +599,6 @@ class ConfigBert(object):
                 "relation_label": relation_label[:cur_bsz, :max_h_t_cnt].contiguous(),
                 "input_lengths": input_lengths,
                 "pos_idx": pos_idx[:cur_bsz, :max_c_len].contiguous(),
-                "relation_multi_label": relation_multi_label[:cur_bsz, :max_h_t_cnt],
-                "relation_mask": relation_mask[:cur_bsz, :max_h_t_cnt],
                 "context_ner": context_ner[:cur_bsz, :max_c_len].contiguous(),
                 "context_char_idxs": context_char_idxs[:cur_bsz, :max_c_len].contiguous(),
                 "ht_pair_pos": ht_pair_pos[:cur_bsz, :max_h_t_cnt],
@@ -611,38 +615,33 @@ class ConfigBert(object):
                 "sent_num": sentence_num,
                 "sdp_position": sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                 "sdp_num": sdp_nums,
-                # "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
-                "relation_restriction": relation_restriction[:cur_bsz, :max_h_t_cnt],
+                ## Followings are customed fields
+                "relation_multi_label": relation_multi_label[:cur_bsz, :max_h_t_cnt],
+                "relation_mask": relation_mask[:cur_bsz, :max_h_t_cnt],
+                "entity_pairs": entity_pairs,
             }
 
     def get_test_batch(self):
-        context_idxs = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
-        context_pos = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
+        kwargs = {"device": self.device, "dtype": torch.float}
+        kwargs2 = {"device": self.device, "dtype": torch.long}
+
+        context_idxs = torch.zeros(self.test_batch_size, self.max_length, **kwargs2)
+        context_pos = torch.zeros(self.test_batch_size, self.max_length, **kwargs2)
         h_mapping = torch.zeros(
-            self.test_batch_size, self.test_relation_limit, self.max_length, device=self.device, dtype=torch.float
+            self.test_batch_size, self.test_relation_limit, self.max_length, **kwargs
         )
         t_mapping = torch.zeros(
-            self.test_batch_size, self.test_relation_limit, self.max_length, device=self.device, dtype=torch.float
+            self.test_batch_size, self.test_relation_limit, self.max_length, **kwargs
         )
-        context_ner = torch.zeros(self.test_batch_size, self.max_length, device=self.device, dtype=torch.long)
+        context_ner = torch.zeros(self.test_batch_size, self.max_length, **kwargs2)
         context_char_idxs = torch.zeros(
-            self.test_batch_size, self.max_length, self.char_limit, device=self.device, dtype=torch.long
+            self.test_batch_size, self.max_length, self.char_limit, **kwargs2
         )
-        relation_mask = torch.zeros(self.test_batch_size, self.h_t_limit, device=self.device, dtype=torch.float)
-        ht_pair_pos = torch.zeros(self.test_batch_size, self.h_t_limit, device=self.device, dtype=torch.long)
-        context_seg = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
-        context_masks = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
-        context_starts = torch.zeros(self.batch_size, self.max_length, device=self.device, dtype=torch.long)
-        relation_restriction = torch.zeros(
-            self.batch_size, self.h_t_limit, self.relation_num, dtype=torch.float, device=self.device
-        )
-        # structure_mask = torch.zeros(
-        #     self.batch_size,
-        #     self.max_length,
-        #     self.max_length,
-        #     dtype=torch.long,
-        #     device=context_seg.device,
-        # )
+        ht_pair_pos = torch.zeros(self.test_batch_size, self.h_t_limit, **kwargs2)
+        context_seg = torch.zeros(self.batch_size, self.max_length, **kwargs2)
+        context_masks = torch.zeros(self.batch_size, self.max_length, **kwargs2)
+        context_starts = torch.zeros(self.batch_size, self.max_length, **kwargs2)
+        relation_mask = torch.zeros(self.batch_size, self.h_t_limit, self.relation_num, **kwargs)
 
         node_position_sent = torch.zeros(
             self.batch_size, self.max_sent_num, self.max_node_per_sent, self.max_sent_len
@@ -691,6 +690,9 @@ class ConfigBert(object):
             sdp_nums = []
 
             vertexSets = []
+            entity_pairs = np.full(
+                (self.batch_size, self.h_t_limit), fill_value=self.entity_ded2id["na"]
+            )
 
             for i, index in enumerate(cur_batch):
                 context_idxs[i].copy_(torch.from_numpy(self.data_test_bert_word[index, :]))
@@ -763,14 +765,26 @@ class ConfigBert(object):
                             else:
                                 ht_pair_pos[i, j] = int(self.dis2idx[delta_dis])
 
+                            ##################################################################
+                            ## Create target (relation_multi_label), mask (relation_mask)
+                            ## and entity_pairs (is a list)
+                            ##################################################################
+
                             h_type, t_type = hlist[0]["type"], tlist[0]["type"]
-                            rel = f"{h_type}-{t_type}"
-                            if rel in self.rel_entity_dedicated:
-                                for x in self.rel_entity_dedicated[rel]:
-                                    possible_rel = self.reltype2id[x]
-                                    relation_restriction[i, j, possible_rel] = 1
-                            else:
-                                relation_restriction[i, j, :] = 1
+                            entity_pair = f"{h_type}-{t_type}"
+
+                            ## Kiểm tra nếu entity_pair có trong danh sách thì kích thước của trg vector
+                            ## bằng số lượng các relation có thể có của entity pair đó
+                            ## còn không thì kích thước của trg vector bằng kích thước tối đa (chính là self.h_t_limit)
+                            len_trg_vector = (
+                                len(self.rel_entity_dedicated[entity_pair])
+                                if entity_pair in self.rel_entity_dedicated
+                                else self.h_t_limit
+                            )
+
+                            ## Assign value for mask and entity_pairs
+                            entity_pairs[i, j] = self.entity_ded2id[entity_pair]
+                            relation_mask[i, j, :len_trg_vector] = 1
 
                             j += 1
 
@@ -813,7 +827,6 @@ class ConfigBert(object):
                 "input_lengths": input_lengths,
                 "context_ner": context_ner[:cur_bsz, :max_c_len].contiguous(),
                 "context_char_idxs": context_char_idxs[:cur_bsz, :max_c_len].contiguous(),
-                "relation_mask": relation_mask[:cur_bsz, :max_h_t_cnt],
                 "titles": titles,
                 "ht_pair_pos": ht_pair_pos[:cur_bsz, :max_h_t_cnt],
                 "node_position": node_position[
@@ -830,14 +843,19 @@ class ConfigBert(object):
                 "sdp_position": sdp_position[:cur_bsz, :max_sdp_num, :max_c_len].contiguous(),
                 "sdp_num": sdp_nums,
                 "vertexsets": vertexSets,
-                # "structure_mask": structure_mask[:cur_bsz, :max_c_len, :max_c_len].long(),
-                "relation_restriction": relation_restriction[:cur_bsz, :max_h_t_cnt],
+                ## Followings are customed fields
+                "relation_mask": relation_mask[:cur_bsz, :max_h_t_cnt],
+                "entity_pairs": entity_pairs,
             }
 
     def train(self, model_pattern, model_name):
 
-        ori_model = model_pattern(config=self)
-        if self.pretrain_model != None:
+        ori_model = model_pattern(
+            config=self,
+            rel_entity_dedicated=self.rel_entity_dedicated,
+            id2entity_ded=self.id2entity_ded,
+        )
+        if self.pretrain_model is not None:
             ori_model.load_state_dict(torch.load(self.pretrain_model))
         ori_model.cuda()
 
@@ -876,7 +894,6 @@ class ConfigBert(object):
 
         global_step = 0
         total_loss = 0
-        start_time = time.time()
 
         def logging(s, print_=True, log_=True):
             if print_:
@@ -899,7 +916,7 @@ class ConfigBert(object):
             self.acc_NA.clear()
             self.acc_not_NA.clear()
             self.acc_total.clear()
-            print("epoch:{}, Learning rate:{}".format(epoch, optimizer.param_groups[0]["lr"]))
+            print(f"epoch: {epoch}, lr: {optimizer.param_groups[0]['lr']}")
 
             epoch_start_time = time.time()
             pbar = tqdm(self.get_train_batch(), desc=f"Epoch: {epoch}", total=self.train_batches)
@@ -909,17 +926,14 @@ class ConfigBert(object):
                 h_mapping = data["h_mapping"]
                 t_mapping = data["t_mapping"]
                 relation_label = data["relation_label"]
-                input_lengths = data["input_lengths"]
                 relation_multi_label = data["relation_multi_label"]
                 relation_mask = data["relation_mask"]
                 context_ner = data["context_ner"]
-                context_char_idxs = data["context_char_idxs"]
                 ht_pair_pos = data["ht_pair_pos"]
                 context_seg = data["context_seg"]
                 context_masks = data["context_masks"]
                 context_starts = data["context_starts"]
-                # structure_mask = data["structure_mask"]
-                relation_restriction = data["relation_restriction"]
+                entity_pairs = data["entity_pairs"]
 
                 dis_h_2_t = ht_pair_pos + 10
                 dis_t_2_h = -ht_pair_pos + 10
@@ -933,7 +947,6 @@ class ConfigBert(object):
                 # input_lengths = input_lengths.cuda()
                 h_mapping = h_mapping.cuda()
                 t_mapping = t_mapping.cuda()
-                relation_mask = relation_mask.cuda()
                 dis_h_2_t = dis_h_2_t.cuda()
                 dis_t_2_h = dis_t_2_h.cuda()
 
@@ -954,7 +967,7 @@ class ConfigBert(object):
                         context_ner,
                         h_mapping,
                         t_mapping,
-                        relation_mask,
+                        relation_mask[:, :, 0],
                         dis_h_2_t,
                         dis_t_2_h,
                         context_seg,
@@ -967,21 +980,19 @@ class ConfigBert(object):
                         sdp_num,
                         context_masks,
                         context_starts,
-                        # structure_mask,
+                        entity_pairs,
                     )
 
                     relation_multi_label = relation_multi_label.cuda()
 
                     ## Calculate loss
-                    loss = BCE(predict_re, relation_multi_label)
-                    if NaNReporter.check_NaN(loss):
+                    loss_raw = BCE(predict_re, relation_multi_label)
+                    # [bz, h_t_limit, relation_num]
+                    if NaNReporter.check_NaN(loss_raw):
                         print(f"logits: max {predict_re.max()} - min {predict_re.min()}")
 
-                    # # Apply masking for relating restriction
-                    loss = loss * relation_restriction
-
-                    # Apply relation mask
-                    loss = torch.sum(loss * relation_mask.unsqueeze(2)) / torch.sum(relation_mask)
+                    # Calculate final loss
+                    loss = torch.sum(loss_raw * relation_mask) / torch.sum(relation_mask)
 
                 if self.opt.wandb:
                     if no % 5 == 0:
@@ -995,8 +1006,6 @@ class ConfigBert(object):
                 loss = scaler.scale(loss)
                 pbar.set_postfix({"loss": f"{loss.item():.3f}"})
                 pbar.refresh()  # to show immediately the update
-
-                ## NOTE: Consider skipping updating gradient as loss NaN
 
                 loss.backward()
                 scaler.unscale_(optimizer)
@@ -1022,17 +1031,8 @@ class ConfigBert(object):
 
                 if global_step % self.period == 0:
                     cur_loss = total_loss / self.period
-                    elapsed = time.time() - start_time
                     logging(
-                        "| epoch {:2d} | step {:4d} |  ms/b {:5.2f} | train loss {:5.3f} | NA acc: {:4.2f} | not NA acc: {:4.2f}  | tot acc: {:4.2f} ".format(
-                            epoch,
-                            global_step,
-                            elapsed * 1000 / self.period,
-                            cur_loss,
-                            self.acc_NA.get(),
-                            self.acc_not_NA.get(),
-                            self.acc_total.get(),
-                        )
+                        f"| epoch {epoch:2d} | step {global_step:4d} | train loss {cur_loss:5.3f} | NA acc: {self.acc_NA.get():4.2f} | not NA acc: {self.acc_not_NA.get():4.2f}  | tot acc: {self.acc_total.get():4.2f}"
                     )
                     total_loss = 0
                     start_time = time.time()
@@ -1081,12 +1081,30 @@ class ConfigBert(object):
                     scheduler.step()
 
             dev_score_list.append(f1)
-            print("train time for epoch {}: {}".format(epoch, time.time() - epoch_start_time))
 
         print("Finish training")
-        print("Best epoch = {} | F1 {}, auc = {}".format(best_epoch, best_f1, best_auc))
+        print(f"Best epoch = {best_epoch} | F1 {best_f1}, auc = {best_auc}")
         print("Storing best result...")
         print("Finish storing")
+
+    def _conv_rel_ded2gen(self, pre_r: np.ndarray, entity_pair_id: int) -> np.ndarray:
+        """Convert relation id dedicated at each example to general index
+
+        Args:
+            pre_r (nd.ndarray): selected
+            entity_pair_id (int): entity pair id
+
+        Returns:
+            np.ndarray: tensor after converting to
+        """
+        entity_pair = self.id2entity_ded[entity_pair_id]
+        if entity_pair not in self.rel_entity_dedicated:
+            return pre_r
+
+        pred_rel_name = self.rel_entity_dedicated[entity_pair][pre_r]
+        pred_rel_id = self.rel2id[pred_rel_name]
+
+        return pred_rel_id
 
     def test(self, model, model_name, output=False, input_theta=-1):
         data_idx = 0
@@ -1105,7 +1123,7 @@ class ConfigBert(object):
                 with open(os.path.join(os.path.join("log", model_name)), "a+") as f_log:
                     f_log.write(s + "\n")
 
-        for i, data in enumerate(self.get_test_batch()):
+        for data in self.get_test_batch():
             with torch.no_grad():
                 context_idxs = data["context_idxs"]
                 context_pos = data["context_pos"]
@@ -1115,11 +1133,10 @@ class ConfigBert(object):
                 L_vertex = data["L_vertex"]
                 # input_lengths =  data['input_lengths']
                 context_ner = data["context_ner"]
-                # structure_mask = data["structure_mask"]
-                relation_restriction = data["relation_restriction"]
                 # context_char_idxs = data['context_char_idxs']
                 relation_mask = data["relation_mask"]
                 ht_pair_pos = data["ht_pair_pos"]
+                entity_pairs = data["entity_pairs"]
 
                 # Ivan
                 context_masks = data["context_masks"]
@@ -1142,13 +1159,14 @@ class ConfigBert(object):
                 # sent_num = torch.tensor(data['sent_num'], device=self.device)
                 sdp_pos = data["sdp_position"].cuda()
                 sdp_num = torch.tensor(data["sdp_num"], device=self.device)
+
                 predict_re = model(
                     context_idxs,
                     context_pos,
                     context_ner,
                     h_mapping,
                     t_mapping,
-                    relation_mask,
+                    relation_mask[:, :, 0],
                     dis_h_2_t,
                     dis_t_2_h,
                     context_seg,
@@ -1161,14 +1179,17 @@ class ConfigBert(object):
                     sdp_num,
                     context_masks,
                     context_starts,
-                    # structure_mask,
+                    entity_pairs,
                 )
+                # [bz, h_t_limit, relation_num]
 
             predict_re = torch.sigmoid(predict_re)
-
             predict_re = predict_re.data.cpu().numpy()
 
-            for i in range(len(labels)):
+            ###############################################
+            ## Start calculating metrics
+            ###############################################
+            for i, _ in enumerate(labels):
                 label = labels[i]
                 index = indexes[i]
 
@@ -1185,6 +1206,9 @@ class ConfigBert(object):
                         if h_idx != t_idx:
 
                             pre_r = np.argmax(predict_re[i, j])
+                            ## Convert relation of each example in mini-batch to general index
+                            pre_r = self._conv_rel_ded2gen(pre_r, entity_pairs[i, j])
+
                             if (h_idx, t_idx, pre_r) in label:
                                 top1_acc += 1
 
@@ -1279,9 +1303,7 @@ class ConfigBert(object):
             )
         else:
             logging(
-                "ma_f1{:3.4f} | input_theta {:3.4f} test_result F1 {:3.4f} | AUC {:3.4f}".format(
-                    f1, input_theta, f1_arr[w], pr_x[w], pr_y[w], auc
-                )
+                "ma_f1{f1:3.4f} | input_theta {input_theta:3.4f} test_result F1 {f1_arr[w]:3.4f} | AUC {auc:3.4f}"
             )
 
         # logging("precision {}, recall {}".format(pr_y, pr_x))
@@ -1329,7 +1351,11 @@ class ConfigBert(object):
         return f1, f1_ig, auc, pr_x, pr_y
 
     def testall(self, model_pattern, model_name, input_theta):  # , ignore_input_theta):
-        model = model_pattern(config=self)
+        model = model_pattern(
+            config=self,
+            rel_entity_dedicated=self.rel_entity_dedicated,
+            id2entity_ded=self.id2entity_ded,
+        )
 
         model.load_state_dict(torch.load(os.path.join(self.checkpoint_dir, model_name)))
         model.cuda()
