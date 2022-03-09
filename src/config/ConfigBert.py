@@ -560,9 +560,7 @@ class ConfigBert(object):
                             1.0 / len(tlist) / (t["pos"][1] - t["pos"][0])
                         )
 
-                    relation_multi_label[i, j, 0] = 1
                     relation_label[i, j] = 0
-                    relation_mask[i, j] = 1
                     delta_dis = hlist[0]["pos"][0] - tlist[0]["pos"][0]
 
                     if abs(delta_dis) >= self.max_length:  # for gda
@@ -918,7 +916,6 @@ class ConfigBert(object):
             self.acc_total.clear()
             print(f"epoch: {epoch}, lr: {optimizer.param_groups[0]['lr']}")
 
-            epoch_start_time = time.time()
             pbar = tqdm(self.get_train_batch(), desc=f"Epoch: {epoch}", total=self.train_batches)
             for no, data in enumerate(pbar):
                 context_idxs = data["context_idxs"]
@@ -986,7 +983,7 @@ class ConfigBert(object):
                     relation_multi_label = relation_multi_label.cuda()
 
                     ## Calculate loss
-                    loss_raw = BCE(predict_re, relation_multi_label)
+                    loss_raw = BCE(predict_re * relation_mask, relation_multi_label)
                     # [bz, h_t_limit, relation_num]
                     if NaNReporter.check_NaN(loss_raw):
                         print(f"logits: max {predict_re.max()} - min {predict_re.min()}")
